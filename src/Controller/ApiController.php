@@ -3,61 +3,25 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Entity\Source;
 use App\Entity\Target;
-use App\Repository\SourceRepository;
-use App\Repository\TargetRepository;
 use App\Service\TranslationIntakeService;
 use App\Workflow\TargetWorkflowInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Survos\Lingua\Contracts\Dto\BatchRequest;
-use Survos\Lingua\Contracts\Dto\BatchResponse;
-use Survos\LinguaBundle\Service\LinguaClient;
-use Symfony\Bridge\Twig\Attribute\Template;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 final class ApiController extends AbstractController
 {
     public function __construct(
-        private readonly SourceRepository       $sourceRepository,
-        private readonly TargetRepository       $targetRepository,
-        private readonly EntityManagerInterface $entityManager,
-        private readonly NormalizerInterface    $normalizer,
         private readonly LoggerInterface        $logger,
         private readonly TranslationIntakeService $intake,
     ) {}
-
-    /**
-     * Debug endpoint used during development to inspect Sources/Targets.
-     * Keeps the same route, but removes dd() and returns stable output.
-     */
-    #[Route('/get-translations', name: 'api_get_translations', methods: ['GET'])]
-    #[Template('app/translations.html.twig')]
-    public function getTranslations(
-        #[MapQueryParameter] ?string $keys = null,   // comma-delimited
-        #[MapQueryParameter] ?array $hashes = null,  // array
-    ): JsonResponse|array {
-        if ($keys) {
-            $hashes = array_values(array_filter(array_map('trim', explode(',', $keys))));
-        }
-
-        $hashes ??= [];
-        if ($hashes === []) {
-            return ['sources' => [], 'keys' => $keys, 'hashes' => []];
-        }
-
-        $sources = $this->sourceRepository->findBy(['hash' => $hashes]);
-
-        // Let Twig template render if you use it; keep structure stable.
-        return ['sources' => $sources, 'keys' => $keys, 'hashes' => $hashes];
-    }
 
     /**
      * Lingua "pull" endpoint for babel-style hash lookups.
@@ -65,6 +29,9 @@ final class ApiController extends AbstractController
      * Client sends *source hashes*; server returns translations keyed by those source hashes:
      *   { "<sourceHash>": "<translatedText>", ... }
      */
+    // Path is a literal on purpose. It is the deployed contract that zm/bts/harvest call, and
+    // lingua runs on published vendor copies -- keying it off Survos\Lingua\Contracts\Http\LinguaApi
+    // would let a stale vendor silently relocate a production endpoint.
     #[Route('/babel/pull', name: 'lingua_babel_pull', methods: ['POST', 'GET'])]
     public function pullBabel(
         Request $request,
@@ -130,7 +97,7 @@ final class ApiController extends AbstractController
      * Returns:
      *   { "status": "ok", "response": { queued, items, missing, ... } }
      */
-    #[Route(LinguaClient::ROUTE_BATCH, name: 'api_queue_translation', methods: ['POST'])]
+    #[Route('/batch-translate', name: 'api_queue_translation', methods: ['POST'])]
     public function batchRequest(
         #[MapRequestPayload] ?BatchRequest $payload = null,
     ): JsonResponse {
@@ -148,30 +115,5 @@ final class ApiController extends AbstractController
         ]);
 
         return $this->json(['status' => 'ok', 'response' => $result]);
-    }
-
-    /**
-     * Legacy stub kept for now to avoid breaking any internal callers that might still
-     * reference it indirectly. Not routed (private).
-     *
-     * IMPORTANT: contracts BatchRequest does NOT include enqueue/force fields.
-     */
-    private function receiveBatchRequest(Request $request, BatchRequest $payload): JsonResponse
-    {
-        $jobId = 'job_' . substr(hash('xxh3', json_encode([
-            'source' => $payload->source,
-            'target' => $payload->target,
-            'count'  => count($payload->texts),
-            'engine' => $payload->engine,
-        ], JSON_THROW_ON_ERROR)), 0, 10);
-
-        $this->logger->info('Lingua receiveBatchRequest (legacy helper)', [
-            'texts'  => count($payload->texts),
-            'source' => $payload->source,
-            'target' => $payload->target, // array is fine in PSR-3 context
-            'engine' => $payload->engine,
-        ]);
-
-        return $this->json(new BatchResponse(status: 'ok', queued: 0, items: [], missing: [], jobId: $jobId));
     }
 }
