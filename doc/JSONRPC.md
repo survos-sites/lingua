@@ -247,7 +247,52 @@ Two things worth remembering, both found by testing:
   `AsyncQueueLocator::stamps()` routes there — overriding any transport stamp built from the
   payload. Tests count rows in `messenger_messages` instead.
 
-Still outstanding: `LinguaClient` has no RPC path, so nothing *calls* either method yet.
+### Client — **DONE 2026-08-16**, mono `a259beef`
+
+`LinguaClient` speaks JSON-RPC when `survos_lingua.protocol` / `LINGUA_PROTOCOL` is `rpc`.
+`pullBabelByHashes` → `pullTranslations`, `requestBatch` → `translateBatch`, both keeping
+their existing return shapes so callers are untouched.
+
+**Default is `rest`.** Upgrading the bundle changes nothing for an app pointing at a lingua
+that predates `/api/v1`; flip it per app *after* the server is deployed. Not auto-detected —
+probing costs a round trip and a silent fallback would hide a misconfigured server. An
+unrecognised value degrades to `rest` rather than failing the build.
+
+A rejection is now a `LinguaRpcException` carrying the JSON-RPC code, with
+`isMethodNotFound()` (lingua too old for the method) and `isUnauthorized()` (missing/wrong
+key) to tell those apart from a bad payload. The difference, live against lingua.wip:
+
+```
+RPC : translateBatch es FAILED after 102ms: Unknown engine "bogus".
+      Configured engines: deepl, libre. (-32602)    → command fails
+REST: /batch-translate es 0/1 in 94ms
+      Nothing queued … missing: test                → caller never learns the engine was bad
+```
+
+**Calls narrate while in flight.** `LinguaClient::$onCall` fires at the start and end of
+every request with a `LinguaCall`; a long push or pull previously printed nothing between
+section headers, so a slow server and a hung one looked identical. The label is the JSON-RPC
+*method name* — `translateBatch`, `pullTranslations` — or the REST route, so it names the
+operation rather than a URL. REST narrates too: protocol changes the wire format and the
+error handling, not whether you can see what is happening.
+
+- `lingua:pull` — into the progress bar's `%message%`, so lines cannot corrupt the bar
+- `lingua:push` — one line per completed call, both lines with `-v`
+- `lingua:demo` — every call
+
+That pass also repaired `lingua:demo`, which could not run at all: leftover `dump()`/`dd()`
+(forbidden by CONVENTIONS.md), a commented-out duplicate block, a `translateNow()` call whose
+signature no longer matched, `$res->error` against an array return, and `--no-translate`
+ignored in favour of a hardcoded `insertNewStrings: true`. It is the smoke test the
+libretranslate service repo README points at.
+
+### Rollout
+
+1. Deploy lingua (has `/api/v1`, guard inert while `LINGUA_API_KEY` is empty).
+2. Set `LINGUA_API_KEY` to the same value on lingua **and** zm/bts/harvest, together.
+3. Set `LINGUA_PROTOCOL=rpc` per app once its lingua is known to be current.
+
+Steps 2 and 3 are independent — the key works over both transports.
 
 ### Phase 2 — original note, kept for the reasoning
 
