@@ -71,19 +71,33 @@ reason to adopt it."
 
 ## Plan
 
-### Phase 0 — cleanup first, no JSON-RPC involved
+### Phase 0 — cleanup first, no JSON-RPC involved — **DONE 2026-08-16**
 
-Cheap, independent, and it stops the migration from carrying dead weight forward.
+lingua `7936cb6`, mono `3e491a9e`.
 
-1. **lingua:** delete the dead `/mcp` route and the `ecourty/mcp-server-bundle` leftovers.
-   Follow mediary `5aed133`. If lingua wants an agent surface, it comes back as `/_mcp` from
-   `symfony/mcp-bundle`, dev/test-gated, as in mediary.
-2. **lingua-bundle:** delete `LinguaClient::getJobStatus()` and `ROUTE_JOB`.
-3. **lingua-bundle:** delete `LinguaClient::getSource()`, or wire it to something. It is dead.
-4. **lingua:** delete or clearly mark `GET /get-translations`.
-5. **lingua-contracts:** `LinguaApi`'s two route constants are wrong. Either delete the class
-   or make Phase 1 the moment they become true (see below) — do not leave fiction in a file
-   whose docblock claims it is the stable wire contract.
+1. ~~**lingua:** dead `/mcp` route + `ecourty/mcp-server-bundle` leftovers.~~ Gone. MCP was an
+   experiment in tools-over-JSON-RPC as the agent interface; the direction is now plain
+   JSON-RPC with token auth, so it was deleted rather than rebuilt on `symfony/mcp-bundle`.
+2. ~~**lingua-bundle:** `getJobStatus()` / `ROUTE_JOB`.~~ Gone.
+3. ~~**lingua-bundle:** `getSource()` / `ROUTE_SOURCE`.~~ Gone.
+4. ~~**lingua:** `GET /get-translations`~~ and the private, unrouted `receiveBatchRequest()`
+   stub. Both gone.
+5. ~~**lingua-contracts:** `LinguaApi`'s wrong route constants.~~ Corrected, and deliberately
+   **not** wired into either end.
+
+**Worth knowing, learned by getting it wrong:** the obvious cleanup — have both ends read
+`LinguaApi::ROUTE_*` so there is one source of truth — was tried and reverted. lingua deploys
+on a *published* lingua-contracts, so pointing `#[Route(...)]` at the constant moved the live
+routes to `/api/lingua/*` the moment a vendor copy predated the fix. Constants that define a
+wire contract cannot safely be shared across a version boundary unless both ends move
+together. They are corrected as documentation to check against; Phase 3 can make contracts
+the real owner, in one release, on purpose.
+
+Verified after: `debug:router` shows `/batch-translate` and `/babel/pull` unmoved and no
+`/mcp`; `lint:container` and `cache:warmup` clean. lingua's three pre-existing tests still
+error for unrelated reasons — `symfony/browser-kit` is not installed (2) and
+`BatchRequestTest` imports `Survos\LinguaBundle\Dto\BatchRequest`, a namespace that no longer
+exists (1). Untouched here; worth fixing before Phase 1 adds real tests.
 
 ### Phase 1 — `pullTranslations`, the read half
 
@@ -104,6 +118,51 @@ costs nothing, and prove the bundle on real traffic before the write path.
 - Client: add an RPC path to `LinguaClient::pullBabelByHashes()` behind config, keeping REST
   as the default until it is proven. Drop the `keys` duplicate and the speculative
   `response`/`data` unwrapping on the RPC path — the envelope is defined, not guessed.
+
+Baseline to migrate against, captured 2026-08-16 on the local server:
+
+```bash
+curl -s -x http://127.0.0.1:7080 -X POST https://lingua.wip/babel/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"hashes":["e69eb61789730bd1","5eec6ce370d255d5","33aa52fedd637176"]}'
+# {"33aa52fedd637176":"編輯%entity_label_singular%","5eec6ce370d255d5":"नमस्ते, दुनिया","e69eb61789730bd1":"god morgen"}
+
+curl … -d '{"hashes":["deadbeefdeadbeef"]}'
+# []      <- note: empty *array*, not object. The response type flips shape on no-hits.
+```
+
+#### On streaming
+
+**The bundle cannot stream, and it is worth being clear about that before building on it.**
+`otezvikentiy/json-rpc-api` 5.1 has no `StreamedResponse`, no `text/event-stream`, and no
+generator path anywhere in `src/` — `ApiController::index()` returns a fully-buffered
+`OvResponseInterface`. Streaming JSON-RPC is an MCP extension (that is what SSE / streamable
+HTTP were added for), not part of JSON-RPC 2.0, and MCP is the thing being dropped here.
+
+The two features it *does* have address the same pain more directly:
+
+- **Batch** — an array of request objects in one POST. This is the real fix for
+  round-trip latency: `lingua:push`/`lingua:pull` currently make one HTTP request per
+  200-row chunk per locale pair, and that serial chatter is what made direct DB access
+  tempting in the first place.
+- **Notifications** — a request with no `id` gets no reply at all (`docs/notifications.md`).
+  The right shape for fire-and-forget pushes where the client does not wait on a result.
+
+If genuine streaming is wanted later — results trickling back as each locale finishes rather
+than one answer at the end — that is a separate transport decision (SSE endpoint, or Mercure),
+not something to expect from this bundle.
+
+#### The direct-database hack
+
+There was a point where the exchange felt slow enough that an app was pointed straight at
+lingua's database and queried by hash. **Verified gone as of 2026-08-16**: no second Doctrine
+connection or `LINGUA_DATABASE_*` env var in zm, harvest, bts or openfoto, and nothing in
+lingua-bundle or lingua-core opens a connection — `LinguaPullBabelCommand` goes through
+`LinguaClient::pullBabelByHashes()` over HTTP like everything else.
+
+Worth naming anyway, because it is the actual design constraint: the hack existed because
+per-chunk HTTP round-trips are slow, and if RPC does not fix that, the same pressure returns.
+Batch is the answer (above), and it is the reason Phase 1 is worth doing beyond tidiness.
 
 ### Phase 2 — `translateBatch` **plus auth, together**
 
