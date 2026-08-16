@@ -245,6 +245,61 @@ The write path is where JSON-RPC actually pays, and it must not ship without aut
 3. ~~**Does lingua want an MCP surface?**~~ Answered: not much MCP is wanted. RPC with token
    passing is the direction, and the dead `/mcp` route was removed in Phase 0.
 
+## Reading: the maintainer's own walkthrough
+
+[Build a JSON-RPC 2.0 API in Symfony in 15 Minutes](https://dev.to/otezvikentiy/build-a-json-rpc-20-api-in-symfony-in-15-minutes-from-composer-require-to-openapi-5bpk)
+covers the same ground end to end and explains two things the DTOs alone do not.
+
+**Required in the constructor, optional in setters, and why.** "The rule is simple:
+constructor parameters are required, properties with setters are optional." The point is
+that validation rules are "literally the PHP types of your DTO" — since 5.0 the comparison
+is strict, so `"title": 123` is rejected rather than quietly cast. That is what
+`PullTranslations\Request` is built around, and it is why `hashes` is a constructor arg
+while `locale`/`engine` are setters.
+
+Worth noting: the rule as described is not quite the rule as enforced.
+`CompilerPass::getValidatorsForRequest()` requires a getter **and** a setter for *every*
+property — so a required, constructor-injected param is also forced to expose a public
+setter it never uses, and cannot be immutable. `analyzeRequestClass()` treats the setter as
+optional, so the two passes disagree.
+
+Raised upstream as
+[issue #11](https://github.com/OtezVikentiy/symfony-jsonrpc-api-bundle/issues/11), with the
+evidence rather than an opinion:
+
+- The compiled getters are only ever *called* for a property typed as another class —
+  `RequestHandler::processValidatorsForRequestInstance()` does
+  `if (!class_exists($validatorItem['type'], false)) continue;` before reaching them. For
+  `array $hashes` / `?string $locale` the getter is required at build and never invoked.
+- The bundle already takes the opposite position on the response side.
+  `SerialisesPublicSurface` exports "through a public getter, **or by being public
+  itself**", and its docblock argues that requiring a getter "would protect nothing and
+  would drop the promoted public properties that are the shortest honest way to write a
+  response DTO". That is the request-side argument verbatim.
+- Tried it: a ~10-line patch (public property satisfies the check; runtime falls back to
+  reading the property) lets the conventional promoted-public DTO compile, and all 16
+  functional tests pass unchanged — batch, filters, `-32602`, `-32601` included. Strict
+  type validation is unaffected, since it derives from the property types either way. The
+  patch was reverted; `Request` keeps its accessors until upstream decides.
+
+**`JRPCException` for domain errors, sanitisation for everything else.** A deliberate
+`throw new JRPCException('Task not found.', JRPCException::SERVER_ERROR)` becomes a proper
+JSON-RPC error object, while any unexpected `Throwable` reaches the client as a generic
+`-32603 Internal error` with the stack trace going to the log only — no leaking paths or
+class names.
+
+`pullTranslations` has no domain error to raise: an unknown hash is not a failure, it is a
+`missing` entry, which is the whole point of the method. **`translateBatch` in Phase 2 is
+where this matters** — an unknown engine, an unsupported locale pair, or a rejected payload
+should be a `JRPCException` with a real code, not an exception that sanitises to a bare
+`-32603` the caller cannot act on. The REST endpoint currently answers these with
+`{"status":"error","error":"..."}` at HTTP 200, which is worse than either.
+
+This also explains the `-32603` seen while building Phase 1: a nested array in `hashes`
+passed the type check and threw deeper in, and the sanitiser did exactly what it promises —
+turned it into a generic internal error. The fix was to make it a real `-32602` at the edge,
+not to expose the internals.
+
 ## Upstream: profiler integration
 
 `otezvikentiy/json-rpc-api` has **no Symfony Profiler integration** — no `DataCollector`, no
