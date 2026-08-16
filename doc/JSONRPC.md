@@ -208,10 +208,48 @@ explicit typed arguments — no `#[Autowire('%env(...)%')]` in a constructor and
 `param: 'lingua.webhook_key'`, a parameter defined nowhere, which had never fired only
 because its route is not registered.
 
-Still outstanding for Phase 2 proper: `translateBatch` itself, and deciding whether the key
-is one shared secret or per-tenant.
+**Key scope: decided.** One shared secret, not per-tenant and not sharded. The endpoint has
+been open; the goal is to close it, not to build an access-control system. If per-tenant keys
+are ever wanted, `LinguaKeyGuard` is the one place that changes.
 
-### Phase 2 (continued) — `translateBatch` **plus auth, together**
+### Phase 2 — `translateBatch` **DONE 2026-08-16**
+
+`translateBatch` on `POST /api/v1`, sharing `TranslationIntakeService` with
+`POST /batch-translate` exactly as `pullTranslations` shares `TranslationPullService` with
+`/babel/pull`. The REST route is untouched — zm/bts/harvest still call it, and a test pins
+its `{"status":"ok","response":{…}}` envelope.
+
+Three improvements over REST, all tested:
+
+- **Errors are errors.** A rejected payload used to come back as
+  `{"status":"ok","response":{"error":"Invalid payload: …"}}` at HTTP 200 — the caller had to
+  dig into a *successful* response to discover nothing happened. Now `-32602` with the
+  reason, via `JRPCException`, which is the pattern the maintainer's walkthrough describes.
+- **Unknown engines are caught at the edge.** Nothing validated `engine` before: an unknown
+  one created Target rows, queued them, and then failed one at a time *inside the worker* at
+  `TargetWorkflow`'s `Assert::inArray` — after the write, asynchronously, where the caller
+  never saw it. Now `-32602` naming the configured engines, before anything is written. This
+  is the "more reliable" half.
+- **Batch.** Several (source, target-locale) groups in one round trip instead of one HTTP
+  call per chunk per locale pair.
+
+`status` is gone from the result: JSON-RPC says success by returning `result` rather than
+`error`, so the REST route's double envelope was redundant twice over.
+
+Two things worth remembering, both found by testing:
+
+- **Defaults must be on the property, not only the constructor parameter.** The bundle decides
+  required-vs-optional with `$propertyType->allowsNull() || $property->hasDefaultValue()`, so
+  `bool $insertNewStrings = true` in the signature alone still made it required, and every
+  caller that omitted it got "[insertNewStrings] - This field is missing."
+- **Overriding `async` in the test env does nothing for this path.** state-bundle registers
+  its own per-transition transport, `target.translate` on `doctrine://default`, and
+  `AsyncQueueLocator::stamps()` routes there — overriding any transport stamp built from the
+  payload. Tests count rows in `messenger_messages` instead.
+
+Still outstanding: `LinguaClient` has no RPC path, so nothing *calls* either method yet.
+
+### Phase 2 — original note, kept for the reasoning
 
 The write path is where JSON-RPC actually pays, and it must not ship without authentication.
 

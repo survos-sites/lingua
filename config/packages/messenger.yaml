@@ -16,10 +16,15 @@ framework:
 #             'Survos\StateBundle\Message\TransitionMessage': async
 
 
+# NOTE: overriding `async` here would do nothing for the translate path. state-bundle
+# auto-registers a per-transition transport -- `target.translate`, dsn doctrine://default --
+# and AsyncQueueLocator::stamps() routes TransitionMessage there, overriding any transport
+# stamp built from the request payload. In the test env doctrine://default is lingua_test, so
+# dispatched jobs land in its messenger_messages table with auto_setup creating it; that is
+# what TranslateBatchMethodTest counts.
+#
 # when@test:
 #    framework:
 #        messenger:
 #            transports:
-#                # replace with your transport name here (e.g., my_transport: 'in-memory://')
-#                # For more Messenger testing tools, see https://github.com/zenstruck/messenger-test
 #                async: 'in-memory://'
