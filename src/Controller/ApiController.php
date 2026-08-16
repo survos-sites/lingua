@@ -3,10 +3,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Entity\Target;
 use App\Service\TranslationIntakeService;
-use App\Workflow\TargetWorkflowInterface;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\TranslationPullService;
 use Psr\Log\LoggerInterface;
 use Survos\Lingua\Contracts\Dto\BatchRequest;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -19,8 +17,9 @@ use Symfony\Component\Routing\Attribute\Route;
 final class ApiController extends AbstractController
 {
     public function __construct(
-        private readonly LoggerInterface        $logger,
-        private readonly TranslationIntakeService $intake,
+        private readonly LoggerInterface           $logger,
+        private readonly TranslationIntakeService  $intake,
+        private readonly TranslationPullService    $pull,
     ) {}
 
     /**
@@ -35,7 +34,6 @@ final class ApiController extends AbstractController
     #[Route('/babel/pull', name: 'lingua_babel_pull', methods: ['POST', 'GET'])]
     public function pullBabel(
         Request $request,
-        EntityManagerInterface $em,
         #[MapQueryParameter] ?string $locale = null,
         #[MapQueryParameter] ?string $engine = null,
     ): JsonResponse {
@@ -50,44 +48,15 @@ final class ApiController extends AbstractController
             return new JsonResponse(['error' => 'Missing hashes[].'], JsonResponse::HTTP_BAD_REQUEST);
         }
 
-        $hashes = array_values(array_unique(array_filter(array_map('strval', $hashes))));
+        $hashes = $this->pull->normalizeHashes($hashes);
         if ($hashes === []) {
             return new JsonResponse(['error' => 'No valid hashes.'], JsonResponse::HTTP_BAD_REQUEST);
         }
 
-        // IMPORTANT: hashes are Source.hash, not Target.key.
-        // We join t.source and filter by s.hash, then return map keyed by s.hash.
-        $qb = $em->createQueryBuilder()
-            ->select('s.hash AS hash, t.targetText AS text')
-            ->from(Target::class, 't')
-            ->join('t.source', 's')
-            ->andWhere('s.hash IN (:hashes)')
-            ->andWhere('t.marking IN (:markings)')
-            ->setParameter('hashes', $hashes)
-            ->setParameter('markings', [TargetWorkflowInterface::PLACE_TRANSLATED]);
-
-        if ($locale) {
-            $qb->andWhere('t.targetLocale = :locale')
-                ->setParameter('locale', $locale);
-        }
-        if ($engine) {
-            $qb->andWhere('t.engine = :engine')
-                ->setParameter('engine', $engine);
-        }
-
-        $rows = $qb->getQuery()->getArrayResult();
-
-        $map = [];
-        foreach ($rows as $row) {
-            $h = (string) ($row['hash'] ?? '');
-            if ($h === '') {
-                continue;
-            }
-            $text = $row['text'];
-            $map[$h] = is_string($text) ? $text : (string) $text;
-        }
-
-        return new JsonResponse($map);
+        // Response shape is unchanged: a bare map, and [] rather than {} when nothing hits.
+        // zm/bts/harvest parse this today. The RPC method reports `missing` as well; this
+        // one cannot start doing so without breaking those callers.
+        return new JsonResponse($this->pull->pullByHashes($hashes, $locale, $engine));
     }
 
 

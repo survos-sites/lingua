@@ -31,6 +31,7 @@
         "inspector-apm/inspector-symfony": "^1.11.5",
         "nelmio/cors-bundle": "^2.6.1",
         "nyholm/psr7": "^1.8.2",
+        "otezvikentiy/json-rpc-api": "^5.1",
         "paragonie/sodium_compat": "^2.5",
         "phpdocumentor/reflection-docblock": "^5.6.7",
         "phpstan/phpdoc-parser": "^2.3.2",
@@ -114,9 +115,9 @@
             "php -d memory_limit=2G bin/console app:export --zip --no-debug --batch=2500"
         ],
         "auto-scripts": {
-            
             "assets:install %PUBLIC_DIR%": "symfony-cmd",
-            "importmap:install": "symfony-cmd"
+            "importmap:install": "symfony-cmd",
+            "cache:clear": "symfony-cmd"
         },
         "post-install-cmd": [
             "php -d memory_limit=512M bin/console cache:clear",
