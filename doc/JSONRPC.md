@@ -164,7 +164,54 @@ Worth naming anyway, because it is the actual design constraint: the hack existe
 per-chunk HTTP round-trips are slow, and if RPC does not fix that, the same pressure returns.
 Batch is the answer (above), and it is the reason Phase 1 is worth doing beyond tidiness.
 
-### Phase 2 — `translateBatch` **plus auth, together**
+### Phase 1 — **DONE 2026-08-16**, lingua `fcce320`, mono `b49d09c4`
+
+`POST /api/v1`, method `pullTranslations`. `TranslationPullService` holds the query and both
+transports call it. Verified live: real hashes answered, `missing` isolates an unknown hash,
+a two-element batch answered in one round trip with per-element ids, `-32602` for bad params,
+REST unchanged.
+
+Two things testing caught that reading would not have:
+
+- **The bundle compiles validators from property *types* only** and ignores `Assert`
+  attributes on the DTO (`docs/validation.md`). `{"hashes":[{"a":1}]}` satisfied the `array`
+  check and then threw in `strval()`, surfacing as `-32603 Internal error`. The element check
+  is explicit now, as a `\TypeError` — the bundle's documented signal, converted to `-32602`.
+- **The Request DTO cannot follow CONVENTIONS.md.** `CompilerPass` throws
+  "Property … has no accessible getter" at container build for any property without one, and
+  optional params are applied via setters. Public promoted properties were tried; the
+  container would not compile. The *Response* has no such constraint and is written the
+  conventional way — public promoted readonly, no accessors.
+
+One claim in this document was over-stated and is corrected in the code: the RPC response
+does **not** fix the `[]`-vs-`{}` type flip on an empty result. The bundle's serialiser
+normalises every value to a PHP array before encoding, so an empty map encodes as `[]`
+either way. Fixing it needs a different shape (a list of `{hash, text}` entries), which is a
+heavier contract than the empty case is worth. `missing` was always the substantive fix.
+
+### Phase 2 — the shared key, **plumbing landed inert 2026-08-16**
+
+`survos_lingua.api_key` (`LINGUA_API_KEY`) is one value installed on lingua *and* on every
+app that calls it: clients send it as `X-Api-Key`, lingua compares with `hash_equals`.
+`LinguaKeyGuard` (lingua-bundle) plus `LinguaApiKeyListener` (lingua) guard `/api/v*`,
+`/batch-translate` and `/babel/pull`.
+
+**With no key set it allows everything — exactly today's behaviour** — so this is safe to
+deploy before the key is distributed. Turning it on is a deployment step: set the same value
+on lingua and on zm/bts/harvest *together*, or callers start getting 401s. Verified all six
+cases live (unset → 200; missing → 401; wrong → 401; correct `X-Api-Key` → 200; correct
+`Bearer` → 200; `/health` untouched).
+
+Configuration is resolved in `SurvosLinguaBundle::loadExtension()` and handed to services as
+explicit typed arguments — no `#[Autowire('%env(...)%')]` in a constructor and no opaque
+`$config` array. That pass also fixed a latent bug: `LinguaWebhookController` autowired
+`param: 'lingua.webhook_key'`, a parameter defined nowhere, which had never fired only
+because its route is not registered.
+
+Still outstanding for Phase 2 proper: `translateBatch` itself, and deciding whether the key
+is one shared secret or per-tenant.
+
+### Phase 2 (continued) — `translateBatch` **plus auth, together**
 
 The write path is where JSON-RPC actually pays, and it must not ship without authentication.
 
@@ -195,6 +242,30 @@ The write path is where JSON-RPC actually pays, and it must not ship without aut
    the bundle and `SURVOS_LINGUA_API_KEY` already assume), or something per-tenant. Phase 2
    is blocked on this; Phases 0 and 1 are not.
 2. **libre-bundle's `TranslationClientService`** — delete, or repoint? (Phase 3.)
-3. **Does lingua want an MCP surface?** "Translate these strings" / "what's the coverage for
-   locale X" are decent agent tools, and MCP *is* JSON-RPC 2.0, so `/_mcp` and `/api/v1` can
-   coexist the way they do in mediary. Not required by anything above.
+3. ~~**Does lingua want an MCP surface?**~~ Answered: not much MCP is wanted. RPC with token
+   passing is the direction, and the dead `/mcp` route was removed in Phase 0.
+
+## Upstream: profiler integration
+
+`otezvikentiy/json-rpc-api` has **no Symfony Profiler integration** — no `DataCollector`, no
+`data_collector`-tagged service, no templates. So a dev request shows the HTTP client call
+and nothing about the RPC layer: which method ran, what params, result or `-32602`, how long.
+
+Proposed upstream as
+[issue #10](https://github.com/OtezVikentiy/symfony-jsonrpc-api-bundle/issues/10), modelled
+on `symfony/ai-bundle`'s panel, which shows both the **registry** ("Registered Tools") and
+the **traffic** (calls with inputs and results). Both halves already exist here and neither
+is exposed:
+
+- `MethodSpecCollection::getAllMethods()` → every registered method with its params, types,
+  required/optional split, tags, roles and compiled validators. This is the AiTools-style
+  "show the definitions" half.
+- `JsonRpcCallLoggerInterface` is already the "something happened" seam — `logRequest()`
+  takes the decoded element, `logResponse()` takes the response — so a `Traceable*`
+  decorator needs no new instrumentation, and `SensitiveDataMasker` already solves masking.
+
+The one real design question, left to the maintainer: `logging.enabled` defaults to `false`,
+so a collector that merely decorates the configured logger would collect nothing by default,
+and an empty panel is worse than no panel. Filed before writing code for that reason; PR to
+follow if the maintainer agrees on the seam. Same route as the multipart work (issue #8 →
+PR #9), which is documented in `~/sites/depot/docs/json-rpc-bundle-multipart-pr.md`.
