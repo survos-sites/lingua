@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "79626cd780d6cef826355625b600632f",
+    "content-hash": "92cb1569e04a1b09cb441be81efb7100",
     "packages": [
         {
             "name": "api-platform/core",
@@ -3906,16 +3906,16 @@
         },
         {
             "name": "survos/fetch-bundle",
-            "version": "2.19.2",
+            "version": "2.24.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/fetch-bundle.git",
-                "reference": "7f41c2f9be2b2d64c1cf876340724879ee72d51e"
+                "reference": "ee6099e249b7ea0c1ecaf01a0a09a73793fa6f48"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/fetch-bundle/zipball/7f41c2f9be2b2d64c1cf876340724879ee72d51e",
-                "reference": "7f41c2f9be2b2d64c1cf876340724879ee72d51e",
+                "url": "https://api.github.com/repos/survos/fetch-bundle/zipball/ee6099e249b7ea0c1ecaf01a0a09a73793fa6f48",
+                "reference": "ee6099e249b7ea0c1ecaf01a0a09a73793fa6f48",
                 "shasum": ""
             },
             "require": {
@@ -3957,7 +3957,7 @@
             "description": "HTTP fetch utilities for Symfony: caching (RFC 9111 or app-controlled TTL), retry/backoff, bounded concurrency, and resumable downloads. Optional JSONL dataset-harvesting pagination on top if survos/jsonl-bundle is installed.",
             "support": {
                 "issues": "https://github.com/survos/fetch-bundle/issues",
-                "source": "https://github.com/survos/fetch-bundle/tree/2.19.2"
+                "source": "https://github.com/survos/fetch-bundle/tree/2.24.16"
             },
             "funding": [
                 {
@@ -3965,7 +3965,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-11T10:55:48+00:00"
+            "time": "2026-08-17T22:24:32+00:00"
         },
         {
             "name": "survos/field-bundle",
@@ -4163,16 +4163,16 @@
         },
         {
             "name": "survos/kit-bundle",
-            "version": "2.24.8",
+            "version": "2.24.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/kit-bundle.git",
-                "reference": "e27bc177594a7bd23b3a969343a17f2389b6d05b"
+                "reference": "c03f337b4d46683cda600ee66403e7b6da5ec048"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/kit-bundle/zipball/e27bc177594a7bd23b3a969343a17f2389b6d05b",
-                "reference": "e27bc177594a7bd23b3a969343a17f2389b6d05b",
+                "url": "https://api.github.com/repos/survos/kit-bundle/zipball/c03f337b4d46683cda600ee66403e7b6da5ec048",
+                "reference": "c03f337b4d46683cda600ee66403e7b6da5ec048",
                 "shasum": ""
             },
             "require": {
@@ -4184,7 +4184,15 @@
                 "doctrine/orm": "^3.0",
                 "symfony/asset-mapper": "^8.1",
                 "symfony/framework-bundle": "^8.1",
-                "symfony/twig-bundle": "^8.1"
+                "symfony/messenger": "^8.1",
+                "symfony/remote-event": "^8.1",
+                "symfony/twig-bundle": "^8.1",
+                "symfony/webhook": "^8.1"
+            },
+            "suggest": {
+                "symfony/messenger": "For Survos\\Kit\\Webhook\\RemoteEventTransportMiddleware — per-webhook Messenger transports.",
+                "symfony/remote-event": "For Survos\\Kit\\Webhook — RemoteEvent consumers behind the webhook endpoint.",
+                "symfony/webhook": "For Survos\\Kit\\Webhook — the shared inbound-webhook convention (signature verification, /webhook/{name} matching)."
             },
             "type": "symfony-bundle",
             "extra": {
@@ -4210,7 +4218,7 @@
             ],
             "support": {
                 "issues": "https://github.com/survos/kit-bundle/issues",
-                "source": "https://github.com/survos/kit-bundle/tree/2.24.8"
+                "source": "https://github.com/survos/kit-bundle/tree/2.24.16"
             },
             "funding": [
                 {
@@ -4218,25 +4226,26 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-16T18:53:26+00:00"
+            "time": "2026-08-17T22:24:28+00:00"
         },
         {
             "name": "survos/lingua-bundle",
-            "version": "2.24.8",
+            "version": "2.24.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/lingua-bundle.git",
-                "reference": "57dc5f17c290adb91cb0dc313e75dc7e9407f1b6"
+                "reference": "25257c855463b9e553434c68847d001dc060dfad"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/lingua-bundle/zipball/57dc5f17c290adb91cb0dc313e75dc7e9407f1b6",
-                "reference": "57dc5f17c290adb91cb0dc313e75dc7e9407f1b6",
+                "url": "https://api.github.com/repos/survos/lingua-bundle/zipball/25257c855463b9e553434c68847d001dc060dfad",
+                "reference": "25257c855463b9e553434c68847d001dc060dfad",
                 "shasum": ""
             },
             "require": {
                 "php": "^8.5",
                 "survos/babel-bundle": "^2.10",
+                "survos/kit-bundle": "^2.6",
                 "survos/lingua-contracts": "^2.5",
                 "survos/lingua-core": "^2.5",
                 "symfony/config": "^8.1",
@@ -4245,11 +4254,17 @@
                 "symfony/framework-bundle": "^8.1",
                 "symfony/http-client": "^8.1",
                 "symfony/http-kernel": "^8.1",
-                "symfony/routing": "^8.1"
+                "symfony/remote-event": "^8.1",
+                "symfony/routing": "^8.1",
+                "symfony/webhook": "^8.1"
             },
             "require-dev": {
                 "doctrine/orm": "^3.5",
+                "symfony/messenger": "^8.1",
                 "symfony/phpunit-bridge": "^8.1"
+            },
+            "suggest": {
+                "symfony/messenger": "Required to actually receive translation.completed — the webhook endpoint dispatches a ConsumeRemoteEventMessage."
             },
             "type": "symfony-bundle",
             "autoload": {
@@ -4275,7 +4290,7 @@
             ],
             "support": {
                 "issues": "https://github.com/survos/lingua-bundle/issues",
-                "source": "https://github.com/survos/lingua-bundle/tree/2.24.8"
+                "source": "https://github.com/survos/lingua-bundle/tree/2.24.16"
             },
             "funding": [
                 {
@@ -4283,20 +4298,20 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-16T18:36:08+00:00"
+            "time": "2026-08-17T22:24:30+00:00"
         },
         {
             "name": "survos/lingua-contracts",
-            "version": "2.24.8",
+            "version": "2.24.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/lingua-contracts.git",
-                "reference": "107ad8038dda23261035eac6ffe29272f5458303"
+                "reference": "fb19cd61e13796bc9439b6616e09963702fe1475"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/lingua-contracts/zipball/107ad8038dda23261035eac6ffe29272f5458303",
-                "reference": "107ad8038dda23261035eac6ffe29272f5458303",
+                "url": "https://api.github.com/repos/survos/lingua-contracts/zipball/fb19cd61e13796bc9439b6616e09963702fe1475",
+                "reference": "fb19cd61e13796bc9439b6616e09963702fe1475",
                 "shasum": ""
             },
             "require": {
@@ -4319,7 +4334,7 @@
             "description": "Shared DTOs and API surface (routes/headers) for Survos Lingua client/server interoperability.",
             "support": {
                 "issues": "https://github.com/survos/lingua-contracts/issues",
-                "source": "https://github.com/survos/lingua-contracts/tree/2.24.8"
+                "source": "https://github.com/survos/lingua-contracts/tree/2.24.16"
             },
             "funding": [
                 {
@@ -4327,7 +4342,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-16T18:53:15+00:00"
+            "time": "2026-08-17T22:24:51+00:00"
         },
         {
             "name": "survos/lingua-core",
@@ -4453,16 +4468,16 @@
         },
         {
             "name": "survos/state-bundle",
-            "version": "2.23.1",
+            "version": "2.24.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/state-bundle.git",
-                "reference": "bdc3f8e91364b41aa33c29b994ed823abc5f0a8d"
+                "reference": "0c64829d844e4d9d886fac10a926d484ed09761f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/state-bundle/zipball/bdc3f8e91364b41aa33c29b994ed823abc5f0a8d",
-                "reference": "bdc3f8e91364b41aa33c29b994ed823abc5f0a8d",
+                "url": "https://api.github.com/repos/survos/state-bundle/zipball/0c64829d844e4d9d886fac10a926d484ed09761f",
+                "reference": "0c64829d844e4d9d886fac10a926d484ed09761f",
                 "shasum": ""
             },
             "require": {
@@ -4528,7 +4543,7 @@
             ],
             "support": {
                 "issues": "https://github.com/survos/state-bundle/issues",
-                "source": "https://github.com/survos/state-bundle/tree/2.23.1"
+                "source": "https://github.com/survos/state-bundle/tree/2.24.16"
             },
             "funding": [
                 {
@@ -4536,7 +4551,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-14T14:19:20+00:00"
+            "time": "2026-08-17T22:25:19+00:00"
         },
         {
             "name": "survos/tabler-bundle",
