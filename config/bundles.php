@@ -40,4 +40,5 @@ return [
     Survos\Kit\SurvosKitBundle::class => ['all' => true],
     Survos\EzBundle\SurvosEzBundle::class => ['all' => true],
     OV\JsonRPCAPIBundle\OVJsonRPCAPIBundle::class => ['all' => true],
+    Survos\FetchBundle\SurvosFetchBundle::class => ['all' => true],
 ];

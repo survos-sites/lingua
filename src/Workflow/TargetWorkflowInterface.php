@@ -25,6 +25,16 @@ class TargetWorkflowInterface
     const PLACE_IDENTICAL='i';
     const PLACES = [self::PLACE_UNTRANSLATED, self::PLACE_TRANSLATED, self::PLACE_IDENTICAL];
 
+    /**
+     * Places that mean "there is a result to hand back".
+     *
+     * IDENTICAL belongs here: the engine returned the source text unchanged, which is a real
+     * answer and the subscriber still needs it — a client that only accepted TRANSLATED would
+     * wait forever for every proper noun it ever pushed. Anything selecting finished work
+     * (notably the webhook flush) must use this rather than PLACE_TRANSLATED alone.
+     */
+    const TRANSLATED_PLACES = [self::PLACE_TRANSLATED, self::PLACE_IDENTICAL];
+
     #[Transition([self::PLACE_UNTRANSLATED], self::PLACE_TRANSLATED, async: true)]
     public const TRANSITION_TRANSLATE = 'translate';
 }

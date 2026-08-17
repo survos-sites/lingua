@@ -44,6 +44,12 @@ final class Request
     private bool $forceDispatch = false;
     private ?string $transport;
 
+    /** Where to POST translation.completed. Null keeps the old poll-with-lingua:pull behaviour. */
+    private ?string $callbackUrl;
+
+    /** @var list<string> caller's own key per text, aligned with $texts */
+    private array $refs = [];
+
     /**
      * @param string       $source source locale, e.g. "en"
      * @param list<string> $target target locales, e.g. ["es","fr"]
@@ -57,6 +63,8 @@ final class Request
         bool $insertNewStrings = true,
         bool $forceDispatch = false,
         ?string $transport = null,
+        ?string $callbackUrl = null,
+        array $refs = [],
     ) {
         $this->setTarget($target);
         $this->setTexts($texts);
@@ -64,6 +72,8 @@ final class Request
         $this->insertNewStrings = $insertNewStrings;
         $this->forceDispatch = $forceDispatch;
         $this->transport = $transport;
+        $this->callbackUrl = $callbackUrl;
+        $this->setRefs($refs);
     }
 
     public function getSource(): string
@@ -146,6 +156,32 @@ final class Request
     public function setTransport(?string $transport): void
     {
         $this->transport = $transport;
+    }
+
+    public function getCallbackUrl(): ?string
+    {
+        return $this->callbackUrl;
+    }
+
+    public function setCallbackUrl(?string $callbackUrl): void
+    {
+        $this->callbackUrl = $callbackUrl;
+    }
+
+    /** @return list<string> */
+    public function getRefs(): array
+    {
+        return $this->refs;
+    }
+
+    /**
+     * @param  list<string> $refs
+     * @throws \TypeError   which the bundle converts to -32602 Invalid params
+     */
+    public function setRefs(array $refs): void
+    {
+        $this->assertAllStrings('refs', $refs);
+        $this->refs = $refs;
     }
 
     /** @param array<mixed> $values */

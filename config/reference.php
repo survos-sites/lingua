@@ -679,7 +679,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         }>,
  *     },
  *     webhook?: bool|array{ // Webhook configuration
- *         enabled?: bool|Param, // Default: false
+ *         enabled?: bool|Param, // Default: true
  *         message_bus?: scalar|Param|null, // The message bus to use. // Default: "messenger.default_bus"
  *         event_header_name?: scalar|Param|null, // Default: "Webhook-Event"
  *         id_header_name?: scalar|Param|null, // Default: "Webhook-Id"
@@ -691,7 +691,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         }>,
  *     },
  *     remote-event?: bool|array{ // RemoteEvent configuration
- *         enabled?: bool|Param, // Default: false
+ *         enabled?: bool|Param, // Default: true
  *     },
  *     json_streamer?: bool|array{ // JSON streamer configuration
  *         enabled?: bool|Param, // Default: false
@@ -707,6 +707,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         id?: scalar|Param|null,
  *         type?: scalar|Param|null,
  *         value?: mixed,
+ *         ...<string, mixed>
  *     }>,
  *     autoescape_service?: scalar|Param|null, // Default: null
  *     autoescape_service_method?: scalar|Param|null, // Default: null
@@ -1124,8 +1125,11 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *                 MultipleActiveResultSets?: bool|Param, // Configuring MultipleActiveResultSets for the pdo_sqlsrv driver
  *                 instancename?: scalar|Param|null, // Optional parameter, complete whether to add the INSTANCE_NAME parameter in the connection. It is generally used to connect to an Oracle RAC server to select the name of a particular instance.
  *                 connectstring?: scalar|Param|null, // Complete Easy Connect connection descriptor, see https://docs.oracle.com/database/121/NETAG/naming.htm.When using this option, you will still need to provide the user and password parameters, but the other parameters will no longer be used. Note that when using this parameter, the getHost and getPort methods from Doctrine\DBAL\Connection will no longer function as expected.
+ *                 ...<string, mixed>
  *             }>,
+ *             ...<string, mixed>
  *         }>,
+ *         ...<string, mixed>
  *     },
  *     orm?: array{
  *         default_entity_manager?: scalar|Param|null,
@@ -1160,6 +1164,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *                         }>,
  *                     }>,
  *                 }>,
+ *                 ...<string, mixed>
  *             },
  *             connection?: scalar|Param|null,
  *             class_metadata_factory_name?: scalar|Param|null, // Default: "Doctrine\\ORM\\Mapping\\ClassMetadataFactory"
@@ -1220,10 +1225,12 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *                 class?: scalar|Param|null,
  *                 enabled?: bool|Param, // Default: false
  *                 parameters?: array<string, mixed>,
+ *                 ...<string, mixed>
  *             }>,
  *             identity_generation_preferences?: array<string, scalar|Param|null>,
  *         }>,
  *         resolve_target_entities?: array<string, scalar|Param|null>,
+ *         ...<string, mixed>
  *     },
  * }
  * @psalm-type DoctrineMigrationsConfig = array{
@@ -1574,6 +1581,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         item_uri_template?: mixed,
  *         ...<string, mixed>
  *     },
+ *     ...<string, mixed>
  * }
  * @psalm-type TwigComponentConfig = array{
  *     defaults?: array<string, Param|string|array{ // Default: ["__deprecated__use_old_naming_behavior"]
@@ -1657,6 +1665,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *             enabled?: bool|Param|null, // Default: null
  *             date_format?: scalar|Param|null,
  *             remove_used_context_fields?: bool|Param,
+ *             ...<string, mixed>
  *         },
  *         path?: scalar|Param|null, // Default: "%kernel.logs_dir%/%kernel.environment%.log"
  *         file_permission?: scalar|Param|null, // Default: null
@@ -1780,6 +1789,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         channels?: Param|string|array{
  *             type?: scalar|Param|null,
  *             elements?: list<scalar|Param|null>,
+ *             ...<string, mixed>
  *         },
  *     }>,
  * }
@@ -1887,9 +1897,12 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     }>,
  * }
  * @psalm-type SurvosLinguaConfig = array{
- *     server?: scalar|Param|null, // Default: "%env(default::LINGUA_BASE_URI)%"
- *     api_key?: scalar|Param|null, // Default: "%env(default::LINGUA_API_KEY)%"
+ *     server?: scalar|Param|null, // Base URI of the lingua server. Empty falls back to https://lingua.survos.com. // Default: "%env(default::LINGUA_BASE_URI)%"
+ *     api_key?: scalar|Param|null, // Shared secret for the lingua API -- NOT babel/LibreTranslate, which needs no key. The same value belongs on lingua itself and on every app that calls it: clients send it, lingua validates it. Empty disables the check (current behaviour). // Default: "%env(default::LINGUA_API_KEY)%"
+ *     protocol?: scalar|Param|null, // "rest" (default) uses POST /batch-translate and /babel/pull. "rpc" uses JSON-RPC at POST /api/v1, which reports rejected payloads as real errors instead of {"status":"ok","response":{"error":...}} at HTTP 200. Requires a lingua deployed with /api/v1; not auto-detected, because probing costs a round trip and a silent fallback would hide a misconfigured server. // Default: "%env(default::LINGUA_PROTOCOL)%"
  *     timeout?: int|Param, // Default: 10
+ *     proxy?: scalar|Param|null, // HTTP proxy override. Empty auto-selects the symfony proxy for a .wip host. // Default: "%env(default::LINGUA_PROXY)%"
+ *     callback_url?: scalar|Param|null, // Absolute URL of THIS app's /webhook/lingua endpoint, e.g. https://zm.wip/webhook/lingua. Sent with every push so the server announces translations instead of making us poll with lingua:pull. Empty keeps the polling behaviour. // Default: "%env(default::LINGUA_CALLBACK_URL)%"
  * }
  * @psalm-type SurvosStateConfig = array{
  *     routes_enabled?: bool|Param, // Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off. // Default: true
@@ -1932,6 +1945,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     iconify?: bool|array{ // Configuration for the remote icon service.
  *         enabled?: bool|Param, // Default: true
  *         on_demand?: bool|Param, // Whether to download icons "on demand". // Default: true
+ *         auto_lock?: bool|Param, // Persist "on demand" icons to the local icon directory (see "icon_dir"). Recommended in dev only. Requires "on_demand" to be enabled. // Default: false
  *         endpoint?: scalar|Param|null, // The endpoint for the Iconify icons API. // Default: "https://api.iconify.design"
  *     },
  *     ignore_not_found?: bool|Param, // Ignore error when an icon is not found. Set to 'true' to fail silently. // Default: false
@@ -2010,6 +2024,13 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *             },
  *         },
  *     },
+ *     favicon?: array{
+ *         enabled?: bool|Param, // Serve a dynamic SVG favicon at /favicon.svg so apps get a useful icon without a favicon-generator workflow. // Default: true
+ *         text?: scalar|Param|null, // 1-2 characters shown on the icon. Defaults to initials derived from app.code. // Default: null
+ *         background?: scalar|Param|null, // Background fill, e.g. a distinct color per environment (prod/wip/dev/test). // Default: "#206bc4"
+ *         foreground?: scalar|Param|null, // Text color. // Default: "#ffffff"
+ *         shape?: "square"|"rounded"|"circle"|Param, // Default: "rounded"
+ *     },
  *     routes?: array{
  *         home?: scalar|Param|null, // Default: "app_homepage"
  *         login?: scalar|Param|null, // Default: null
@@ -2037,6 +2058,64 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  * }
  * @psalm-type SurvosEzConfig = array{
  *     enabled?: bool|Param, // Default: true
+ * }
+ * @psalm-type OvJsonRpcApiConfig = array{
+ *     strict_notifications?: bool|Param, // Default: true
+ *     allow_extra_fields?: bool|Param, // Default: false
+ *     expose_internal_errors?: bool|Param, // Default: false
+ *     max_payload_bytes?: int|Param, // Default: 1048576
+ *     max_json_depth?: int|Param, // Default: 64
+ *     max_batch_size?: int|Param, // Default: 50
+ *     max_dto_depth?: int|Param, // Default: 10
+ *     max_array_param_size?: int|Param, // Default: 1000
+ *     logging?: array{
+ *         enabled?: bool|Param, // Default: false
+ *         request_level?: scalar|Param|null, // Default: "info"
+ *         response_level?: scalar|Param|null, // Default: "info"
+ *         error_response_level?: scalar|Param|null, // Default: "warning"
+ *         max_body_length?: int|Param, // Default: 8192
+ *         skip_plain_responses?: bool|Param, // Default: true
+ *         logger_service?: scalar|Param|null, // Default: null
+ *         call_logger_service?: scalar|Param|null, // Default: null
+ *         masking?: array{
+ *             placeholder?: scalar|Param|null, // Default: "***"
+ *             key_patterns?: list<scalar|Param|null>,
+ *         },
+ *     },
+ *     access_control_allow_origin_list?: list<scalar|Param|null>,
+ *     cors_allowed_headers?: list<scalar|Param|null>,
+ *     swagger?: list<array{ // Default: []
+ *         api_version?: scalar|Param|null, // Default: "1"
+ *         base_path?: scalar|Param|null,
+ *         base_path_description?: scalar|Param|null, // Default: null
+ *         test_path?: scalar|Param|null, // Default: null
+ *         test_path_description?: scalar|Param|null, // Default: null
+ *         base_path_variables?: list<array{ // Default: []
+ *             name?: scalar|Param|null,
+ *             value?: scalar|Param|null,
+ *         }>,
+ *         test_path_variables?: list<array{ // Default: []
+ *             name?: scalar|Param|null,
+ *             value?: scalar|Param|null,
+ *         }>,
+ *         auth_token_name?: scalar|Param|null,
+ *         auth_token_test_value?: scalar|Param|null,
+ *         info?: array{
+ *             title?: scalar|Param|null, // Default: "title"
+ *             description?: scalar|Param|null, // Default: "description"
+ *             terms_of_service_url?: scalar|Param|null, // Default: "terms_of_service_url"
+ *             contact?: array{
+ *                 name?: scalar|Param|null, // Default: "name"
+ *                 url?: scalar|Param|null, // Default: "url"
+ *                 email?: scalar|Param|null, // Default: "email"
+ *             },
+ *             license?: scalar|Param|null, // Default: "license"
+ *             licenseUrl?: scalar|Param|null, // Default: "licenseUrl"
+ *         },
+ *     }>,
+ * }
+ * @psalm-type SurvosFetchConfig = array{
+ *     persistent_cache_path?: scalar|Param|null, // SQLite file backing PersistentFetcher -- an app-controlled-TTL cache independent of what (if anything) the origin sends as Cache-Control/Expires. Deliberately outside %kernel.cache_dir% so it survives cache:clear. // Default: "%kernel.project_dir%/var/data/fetch_cache.db"
  * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,
@@ -2069,6 +2148,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     survos_field?: SurvosFieldConfig,
  *     survos_tabler?: SurvosTablerConfig,
  *     survos_ez?: SurvosEzConfig,
+ *     ov_json_rpc_api?: OvJsonRpcApiConfig,
+ *     survos_fetch?: SurvosFetchConfig,
  *     "when@dev"?: array{
  *         imports?: ImportsConfig,
  *         parameters?: ParametersConfig,
@@ -2104,6 +2185,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_field?: SurvosFieldConfig,
  *         survos_tabler?: SurvosTablerConfig,
  *         survos_ez?: SurvosEzConfig,
+ *         ov_json_rpc_api?: OvJsonRpcApiConfig,
+ *         survos_fetch?: SurvosFetchConfig,
  *     },
  *     "when@prod"?: array{
  *         imports?: ImportsConfig,
@@ -2136,6 +2219,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_field?: SurvosFieldConfig,
  *         survos_tabler?: SurvosTablerConfig,
  *         survos_ez?: SurvosEzConfig,
+ *         ov_json_rpc_api?: OvJsonRpcApiConfig,
+ *         survos_fetch?: SurvosFetchConfig,
  *     },
  *     "when@test"?: array{
  *         imports?: ImportsConfig,
@@ -2170,6 +2255,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_field?: SurvosFieldConfig,
  *         survos_tabler?: SurvosTablerConfig,
  *         survos_ez?: SurvosEzConfig,
+ *         ov_json_rpc_api?: OvJsonRpcApiConfig,
+ *         survos_fetch?: SurvosFetchConfig,
  *     },
  *     ...<string, ExtensionType|array{ // extra keys must follow the when@%env% pattern or match an extension alias
  *         imports?: ImportsConfig,

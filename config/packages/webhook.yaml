@@ -1,0 +1,14 @@
+framework:
+    # lingua is a webhook SENDER only — it tells subscribers when their strings finished
+    # translating (App\Service\TranslationNotifier). It receives none, so there is no `routing:`
+    # block and config/routes/ does not import FrameworkBundle's /webhook/{name} controller.
+    #
+    # The header and algorithm defaults are spelled out because the RECEIVING side verifies
+    # against them: Survos\Kit\Webhook\WebhookSignature hardcodes the same three names, and
+    # changing one here without changing it there rejects every delivery. See docs/webhooks.md.
+    webhook:
+        enabled: true
+        event_header_name: 'Webhook-Event'
+        id_header_name: 'Webhook-Id'
+        signature_header_name: 'Webhook-Signature'
+        signing_algorithm: 'sha256'

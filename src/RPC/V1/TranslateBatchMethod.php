@@ -41,9 +41,14 @@ use Survos\TranslatorBundle\Service\TranslatorManager;
  *     ~160-200ms of pure overhead per avoided round trip -- see doc/BABEL-THROUGHPUT.md,
  *     which also explains why this is the leg where batching actually pays.
  *
- * Deliberately unchanged: this still only *queues* work. Translation happens in the worker,
- * so a caller polls pullTranslations for results. Making the write path synchronous is a
- * different question and is not what "faster" means here.
+ * Deliberately unchanged: this still only *queues* work. Translation happens in the worker, so
+ * the write path is not synchronous and "faster" here never meant that.
+ *
+ * What DID change is how a caller learns the work finished. Send `callbackUrl` (plus `refs`,
+ * your own key per text) and lingua POSTs a signed `translation.completed` webhook when they
+ * are done, carrying the translations inline — instead of the caller running pullTranslations
+ * on a timer and mostly finding nothing. Omit both and the polling contract is untouched.
+ * See docs/webhooks.md.
  */
 #[JsonRPCAPI(methodName: 'translateBatch', type: 'POST')]
 final readonly class TranslateBatchMethod implements ApiMethodInterface
@@ -69,6 +74,8 @@ final readonly class TranslateBatchMethod implements ApiMethodInterface
             insertNewStrings: $request->getInsertNewStrings(),
             forceDispatch: $request->getForceDispatch(),
             transport: $request->getTransport(),
+            callbackUrl: $request->getCallbackUrl(),
+            refs: $request->getRefs(),
         ));
 
         // The intake service reports a rejected payload as an `error` key rather than by

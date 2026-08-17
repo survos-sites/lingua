@@ -10,10 +10,29 @@ framework:
              sync: 'sync://'
              async:
                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+             # Outbound translation.completed delivery, plus the flush that produces it.
+             # Its own transport because it is the only work here that depends on someone
+             # else's uptime, so it is the only queue that will sit in retry — and a
+             # subscriber being down must not stop `target.translate` from draining.
+             webhook:
+               dsn: 'doctrine://default?queue_name=webhook'
+               retry_strategy:
+                   # A subscriber restarting during a deploy is the expected failure; give it
+                   # minutes. 4xx never reaches retry — VerifyingWebhookTransport raises those
+                   # as unrecoverable so they go straight to `failed`.
+                   max_retries: 5
+                   delay: 5000
+                   multiplier: 4
+                   max_delay: 3600000
 
         routing:
             # Route your messages to the transports
 #             'Survos\StateBundle\Message\TransitionMessage': async
+            # The coalescing drain. Shares the webhook transport with the deliveries it
+            # produces so that "pause announcements" is one `messenger:stop-workers`-scoped
+            # decision rather than two.
+            'App\Message\FlushTranslationNotificationsMessage': webhook
+            'Symfony\Component\Webhook\Messenger\SendWebhookMessage': webhook
 
 
 # NOTE: overriding `async` here would do nothing for the translate path. state-bundle

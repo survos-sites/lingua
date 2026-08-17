@@ -5,6 +5,8 @@ namespace App\Service;
 
 use App\Entity\Source;
 use App\Entity\Target;
+use App\Entity\TranslationSubscription;
+use App\Message\FlushTranslationNotificationsMessage;
 use App\Repository\SourceRepository;
 use App\Repository\TargetRepository;
 use App\Workflow\TargetWorkflowInterface;
@@ -57,6 +59,19 @@ final class TranslationIntakeService
             static fn($v) => trim((string) $v),
             (array) $payload->texts
         )));
+
+        // Caller's own key per text, joined on the TRIMMED TEXT rather than on position.
+        // $rawTexts above is filtered and reindexed, so index i of it is not index i of
+        // $payload->texts the moment any text is blank — and text is the right join key
+        // anyway, since it is what the hash and the dedupe below are already built on.
+        $refByText = [];
+        foreach ((array) $payload->texts as $i => $text) {
+            $text = trim((string) $text);
+            $ref = trim((string) (($payload->refs[$i] ?? null) ?? ''));
+            if ($text !== '' && $ref !== '') {
+                $refByText[$text] ??= $ref;
+            }
+        }
 
         if ($fromRaw === '' || $toLocalesRaw === [] || $rawTexts === []) {
             return [
@@ -220,6 +235,11 @@ final class TranslationIntakeService
 
         $this->em->flush();
 
+        // 5b) Record who wants to be told. Only when the caller asked to be — without a
+        // callbackUrl this whole step is skipped and the batch behaves exactly as it always
+        // has (queue now, poll with lingua:pull later).
+        $subscribed = $this->subscribe($payload->callbackUrl, $targetByTuple, $byHash, $refByText);
+
         // 6) Dispatch messages (new + eligible existing)
         $stamps = [];
         if ($payload->transport) {
@@ -250,6 +270,13 @@ final class TranslationIntakeService
             $queued++;
         }
 
+        // 6b) Start the announce chain. ONE message per batch, never one per target: the
+        // handler drains every subscriber in pages and re-schedules itself until nothing is
+        // pending, so a 15,000-target push produces a handful of webhooks rather than 15,000.
+        if ($subscribed > 0) {
+            $this->bus->dispatch(new FlushTranslationNotificationsMessage());
+        }
+
         // 7) Normalize response (sources)
         $items = $this->normalizer->normalize(
             $sources,
@@ -270,6 +297,7 @@ final class TranslationIntakeService
             'targets_created'   => $createdTargets,
             'eligible_existing' => $eligibleExisting,
             'queued'            => $queued,
+            'subscribed'        => $subscribed,
         ]);
 
         return [
@@ -277,5 +305,94 @@ final class TranslationIntakeService
             'items'   => \is_array($items) ? $items : [],
             'missing' => $missingOut,
         ];
+    }
+
+    /**
+     * Upsert one subscription per (target, caller) so the caller can be told when it finishes.
+     *
+     * ## Upsert, not insert
+     *
+     * Re-pushing the same strings is routine — it is how a client picks up a locale it did not
+     * ask for last time, and how `lingua:push` behaves when run twice. The unique constraint is
+     * (target, callback_url), so an existing subscription is REUSED and its notifiedAt cleared
+     * rather than duplicated. Clearing matters: a client that pushes again is asking to be told
+     * again, which is also the supported way to recover from a webhook that was lost before the
+     * receiver could apply it.
+     *
+     * ## Why a ref is required
+     *
+     * Without the caller's own key there is nothing to name the translation by in the webhook —
+     * the caller cannot map lingua's content hash back to its own row without redoing the work
+     * `lingua:pull` does. A text with no ref is therefore left unsubscribed (and still
+     * translated, still pullable) rather than generating a webhook the caller cannot act on.
+     *
+     * @param array<string,Target>  $targetByTuple all targets in this batch, by "sourceId|locale|engine"
+     * @param array<string,string>  $byHash        source hash => original text
+     * @param array<string,string>  $refByText     original text => caller's key
+     *
+     * @return int subscriptions written
+     */
+    private function subscribe(?string $callbackUrl, array $targetByTuple, array $byHash, array $refByText): int
+    {
+        $callbackUrl = trim((string) $callbackUrl);
+        if ($callbackUrl === '' || $refByText === []) {
+            return 0;
+        }
+
+        $targets = array_values($targetByTuple);
+        if ($targets === []) {
+            return 0;
+        }
+
+        // One query for every subscription this batch might already have, instead of one
+        // findOneBy() per target — a batch is thousands of targets wide.
+        /** @var TranslationSubscription[] $existing */
+        $existing = $this->em->getRepository(TranslationSubscription::class)->findBy([
+            'callbackUrl' => $callbackUrl,
+            'target' => $targets,
+        ]);
+
+        $byTargetKey = [];
+        foreach ($existing as $subscription) {
+            $byTargetKey[(string) $subscription->target->key] = $subscription;
+        }
+
+        $written = 0;
+        $unreferenced = 0;
+
+        foreach ($targets as $target) {
+            $hash = (string) $target->source?->hash;
+            $text = $byHash[$hash] ?? null;
+            $ref = $text === null ? null : ($refByText[$text] ?? null);
+
+            if ($ref === null) {
+                $unreferenced++;
+                continue;
+            }
+
+            $subscription = $byTargetKey[(string) $target->key] ?? null;
+
+            if ($subscription === null) {
+                $subscription = new TranslationSubscription($target, $callbackUrl, $ref);
+                $this->em->persist($subscription);
+            } else {
+                $subscription->clientRef = $ref;
+            }
+
+            // Announce again even if we already announced once — see the docblock.
+            $subscription->notifiedAt = null;
+            $written++;
+        }
+
+        $this->em->flush();
+
+        if ($unreferenced > 0) {
+            $this->logger->info('Lingua intake: {count} target(s) had no caller ref, left unsubscribed', [
+                'count' => $unreferenced,
+                'callbackUrl' => $callbackUrl,
+            ]);
+        }
+
+        return $written;
     }
 }
