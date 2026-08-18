@@ -1,6 +1,9 @@
 # Dokku: after deploy, set clean-exit workers to restart: dokku ps:set restart-policy always && dokku ps:rebuild
 #  dokku ps:scale lingua translator=1
-web: vendor/bin/heroku-php-nginx -C nginx.conf -F fpm_custom.conf public/
+# Dokku's Procfile support overrides the Dockerfile's CMD per process type -- even
+# under the dockerfile builder -- so a stale `web:` line silently keeps the old
+# broken command.
+web: frankenphp run --config /etc/caddy/Caddyfile
 # --fetch-size=8 (Symfony 8.1): pulls 8 messages per Doctrine query instead of one per
 # round trip. Worth more than usual here — the transport is doctrine://default, i.e. the
 # same Postgres serving the app, and PG connection timeouts have already been seen from
