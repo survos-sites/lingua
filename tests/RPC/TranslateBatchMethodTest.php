@@ -87,6 +87,61 @@ final class TranslateBatchMethodTest extends WebTestCase
         self::assertSame(4, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM target'));
     }
 
+    /**
+     * A non-English source dispatches ONLY the hub leg; the spokes are dispatched later by
+     * TranslateBatchMessageHandler, once the English text they read actually exists.
+     *
+     * This is the behaviour that turns 2N-1 inference passes into N. Asserting the message
+     * count here is the cheapest way to catch a regression that would otherwise look like
+     * "translation still works, just slower" — spokes racing the hub, finding no English, and
+     * silently skipping.
+     */
+    public function testANonEnglishSourceDispatchesOnlyTheEnglishHubLegFirst(): void
+    {
+        $body = $this->call([
+            'source' => 'es',
+            'target' => ['en', 'fr', 'de'],
+            'texts' => ['hola mundo'],
+        ]);
+
+        // All three targets are accepted and created up front...
+        self::assertSame(3, $body['result']['queued']);
+        self::assertSame(3, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM target'));
+
+        // ...but only ONE message exists: es->en. fr and de wait for it.
+        self::assertSame(1, $this->queuedJobRowCount());
+    }
+
+    /**
+     * An English source has no hub leg to run — `en` IS the hub — so every locale dispatches
+     * immediately, exactly as before. This is the common case (830k of lingua's sources).
+     */
+    public function testAnEnglishSourceDispatchesEveryLocaleImmediately(): void
+    {
+        $this->call([
+            'source' => 'en',
+            'target' => ['fr', 'de'],
+            'texts' => ['hello world'],
+        ]);
+
+        self::assertSame(2, $this->queuedJobRowCount());
+    }
+
+    /**
+     * Without English among the targets there is nothing to pivot through, and inventing an
+     * English translation the caller never asked for is not intake's decision to make.
+     */
+    public function testANonEnglishSourceWithoutEnglishRequestedStaysDirect(): void
+    {
+        $this->call([
+            'source' => 'es',
+            'target' => ['fr', 'de'],
+            'texts' => ['hola mundo'],
+        ]);
+
+        self::assertSame(2, $this->queuedJobRowCount());
+    }
+
     public function testTheSameTextTwiceIsDedupedToOneSource(): void
     {
         $body = $this->call([

@@ -285,13 +285,55 @@ final class TranslationIntakeService
         // to "how much work did you accept", and changing its meaning would silently break
         // every client that reports it.
         $queued = 0;
-        foreach ($toDispatch as $targetLocale => $targetKeys) {
-            foreach (array_chunk($targetKeys, self::TRANSLATE_CHUNK) as $chunk) {
+
+        $hub = TranslateBatchMessage::HUB_LOCALE;
+        $spokeLocales = array_values(array_filter(
+            array_keys($toDispatch),
+            static fn($loc): bool => (string) $loc !== $hub,
+        ));
+
+        // ENGLISH HUB. For a non-English source, every spoke is translated from the stored
+        // English rather than from the source text, turning 2N-1 inference passes into N —
+        // LibreTranslate pivots through English internally anyway, we just never saw it and
+        // paid for it once per target language.
+        //
+        // The hub leg goes first and carries the spoke list; TranslateBatchMessageHandler
+        // dispatches the spokes once the English exists. Nothing is dispatched for the spokes
+        // here, or they would race the hub and find no text to read.
+        if ($from !== $hub && isset($toDispatch[$hub]) && $spokeLocales !== []) {
+            foreach (array_chunk($toDispatch[$hub], self::TRANSLATE_CHUNK) as $chunk) {
                 $this->bus->dispatch(
-                    new TranslateBatchMessage($from, (string) $targetLocale, $engine, $chunk),
+                    new TranslateBatchMessage($from, $hub, $engine, $chunk, thenLocales: $spokeLocales),
                     $stamps,
                 );
                 $queued += \count($chunk);
+            }
+
+            // Counted as accepted even though their messages do not exist yet — the caller
+            // asked for them and they will be dispatched by the hub handler.
+            foreach ($spokeLocales as $loc) {
+                $queued += \count($toDispatch[$loc]);
+            }
+
+            $this->logger->info('Lingua intake: english-hub route', [
+                'source' => $from,
+                'hub' => $hub,
+                'spokes' => $spokeLocales,
+            ]);
+        } else {
+            // Direct route. Either the source IS English (en is already the hub, so every
+            // target is a spoke and there is nothing to pivot through), or English was not
+            // among the requested targets — in which case pivoting would mean translating
+            // into a language the caller never asked for, which is a decision for the caller,
+            // not for intake.
+            foreach ($toDispatch as $targetLocale => $targetKeys) {
+                foreach (array_chunk($targetKeys, self::TRANSLATE_CHUNK) as $chunk) {
+                    $this->bus->dispatch(
+                        new TranslateBatchMessage($from, (string) $targetLocale, $engine, $chunk),
+                        $stamps,
+                    );
+                    $queued += \count($chunk);
+                }
             }
         }
 

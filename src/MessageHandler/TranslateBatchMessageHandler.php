@@ -15,6 +15,7 @@ use Survos\TranslatorBundle\Model\TranslationBatchRequest;
 use Survos\TranslatorBundle\Service\TranslatorManager;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * One HTTP call per language pair, instead of one per string.
@@ -29,11 +30,15 @@ use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 #[AsMessageHandler]
 final class TranslateBatchMessageHandler
 {
+    /** Spoke locales one hub batch may dispatch. Guards against a runaway fan-out. */
+    private const int MAX_FAN_OUT = 25;
+
     public function __construct(
         private readonly TargetRepository $targetRepository,
         private readonly TranslatorManager $translators,
         private readonly TargetTranslationApplier $applier,
         private readonly EntityManagerInterface $em,
+        private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -64,6 +69,11 @@ final class TranslateBatchMessageHandler
         $texts = [];
         $pending = [];
 
+        // Spoke leg: the input is the already-stored hub translation, not the source text.
+        // Resolved in ONE query for the whole batch — a findOneBy() per target would undo the
+        // point of batching.
+        $pivotTexts = $message->pivotLocale === null ? [] : $this->pivotTexts($targets, $message);
+
         foreach ($targets as $target) {
             if ($target->isTranslated || $target->isIdentical) {
                 // Already done — a redelivery, or another batch got there first. Skipping is
@@ -72,7 +82,16 @@ final class TranslateBatchMessageHandler
                 continue;
             }
 
-            $sourceText = $target->source?->getText();
+            if ($message->pivotLocale !== null) {
+                // No hub text yet: the hub leg failed, or this spoke overtook it. Skip rather
+                // than fall back to the source text — falling back would silently produce a
+                // direct translation while recording pivotLocale, i.e. a lie in the data.
+                // The row stays untranslated and is picked up by the next push.
+                $sourceText = $pivotTexts[(string) $target->key] ?? null;
+            } else {
+                $sourceText = $target->source?->getText();
+            }
+
             if ($sourceText === null || $sourceText === '') {
                 continue;
             }
@@ -109,7 +128,7 @@ final class TranslateBatchMessageHandler
 
         $applied = 0;
         foreach ($pending as $i => $target) {
-            if ($this->applier->apply($target, (string) $translations[$i])) {
+            if ($this->applier->apply($target, (string) $translations[$i], $message->pivotLocale)) {
                 $applied++;
             }
         }
@@ -117,12 +136,123 @@ final class TranslateBatchMessageHandler
         // Once for the whole batch. This, and the single HTTP call above, are the entire point.
         $this->em->flush();
 
-        $this->logger->info('translate batch [{from}->{to}] {applied}/{requested} via {engine}', [
+        $this->logger->info('translate batch [{from}->{to}]{via} {applied}/{requested} via {engine}', [
             'from' => $message->sourceLocale,
             'to' => $message->targetLocale,
+            'via' => $message->pivotLocale ? ' (pivot ' . $message->pivotLocale . ')' : '',
             'applied' => $applied,
             'requested' => \count($message->targetKeys),
             'engine' => $message->engine,
+        ]);
+
+        $this->fanOut($message, $pending);
+    }
+
+    /**
+     * Hub text for each target in this batch, keyed by the SPOKE target's key.
+     *
+     * `Target::calcKey()` is deterministic — (sourceHash, locale, engine) — so the hub row's
+     * key is computable from the spoke row without a join, which keeps this to one IN() query
+     * for the whole batch.
+     *
+     * @param Target[] $targets
+     *
+     * @return array<string,string> spoke target key => hub text
+     */
+    private function pivotTexts(array $targets, \App\Message\TranslateBatchMessage $message): array
+    {
+        $hubKeyBySpokeKey = [];
+        foreach ($targets as $target) {
+            if (!$target->source) {
+                continue;
+            }
+            $hubKeyBySpokeKey[(string) $target->key] = Target::calcKey(
+                $target->source,
+                $message->pivotLocale,
+                $target->engine,
+            );
+        }
+
+        if ($hubKeyBySpokeKey === []) {
+            return [];
+        }
+
+        $hubText = [];
+        foreach ($this->targetRepository->findBy(['key' => array_values($hubKeyBySpokeKey)]) as $hub) {
+            // Only a FINISHED hub counts. An untranslated hub row exists from the moment intake
+            // creates it, and its targetText is null.
+            if (($hub->isTranslated || $hub->isIdentical) && ($hub->targetText ?? '') !== '') {
+                $hubText[(string) $hub->key] = $hub->targetText;
+            }
+        }
+
+        $out = [];
+        foreach ($hubKeyBySpokeKey as $spokeKey => $hubKey) {
+            if (isset($hubText[$hubKey])) {
+                $out[$spokeKey] = $hubText[$hubKey];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Dispatch the spoke batches this hub batch was translated for.
+     *
+     * Runs after the flush, so the hub text the spokes will read is already committed.
+     *
+     * The spoke keys are computed, not queried: intake has already created every Target in the
+     * request, and Target::calcKey() is deterministic, so the hub's own rows tell us what the
+     * spoke rows are called.
+     *
+     * @param Target[] $pending targets this batch actually translated
+     */
+    private function fanOut(\App\Message\TranslateBatchMessage $message, array $pending): void
+    {
+        if ($message->thenLocales === [] || $pending === []) {
+            return;
+        }
+
+        if (\count($message->thenLocales) > self::MAX_FAN_OUT) {
+            // Bounded deliberately. A handler that dispatches more messages is the shape that
+            // buried mediary's queue; refusing loudly beats discovering it at 3am.
+            throw new UnrecoverableMessageHandlingException(\sprintf(
+                'Refusing to fan out to %d locales (max %d) from %s->%s.',
+                \count($message->thenLocales),
+                self::MAX_FAN_OUT,
+                $message->sourceLocale,
+                $message->targetLocale,
+            ));
+        }
+
+        foreach ($message->thenLocales as $spokeLocale) {
+            $keys = [];
+            foreach ($pending as $target) {
+                if ($target->source) {
+                    $keys[] = Target::calcKey($target->source, $spokeLocale, $target->engine);
+                }
+            }
+
+            if ($keys === []) {
+                continue;
+            }
+
+            $this->bus->dispatch(new \App\Message\TranslateBatchMessage(
+                // The spoke's engine input is the HUB text, so the source locale it is really
+                // translating from is the hub locale — not the original source. Recording it
+                // honestly here is what lets the engine be given the right language pair.
+                sourceLocale: $message->targetLocale,
+                targetLocale: $spokeLocale,
+                engine: $message->engine,
+                targetKeys: $keys,
+                pivotLocale: $message->targetLocale,
+            ));
+        }
+
+        $this->logger->info('hub {from}->{to} complete, fanned out to {locales}', [
+            'from' => $message->sourceLocale,
+            'to' => $message->targetLocale,
+            'locales' => implode(',', $message->thenLocales),
         ]);
     }
 }

@@ -106,6 +106,28 @@ class Target implements RouteParametersInterface, MarkingInterface
         $this->marking ??= TargetWorkflowInterface::PLACE_UNTRANSLATED;
     }
 
+    /**
+     * The locale this row was translated FROM, when that was not the source locale.
+     *
+     * Null = translated directly from Source::$text. 'en' = produced by the English-hub
+     * route: source→en first, then en→this locale, reusing the stored English rather than
+     * making the engine pivot through an English we never see.
+     *
+     * A column rather than a suffix on `engine`, for two reasons. A pivoted row is produced by
+     * TWO engine calls — potentially a paid one for →en and a free one for en→here — so
+     * `engine` alone can no longer describe it. And `engine` is validated against
+     * TranslatorManager::names() (TargetWorkflow's Assert::inArray), which a composite value
+     * like "libre:via-en" would fail.
+     *
+     * NOT part of the key: {@see calcKey()} stays (sourceHash, targetLocale, engine), so a row
+     * remains findable by exactly what the client asked for. How it was produced is provenance,
+     * not identity.
+     */
+    #[ORM\Column(name: 'pivot_locale', length: 6, nullable: true)]
+    #[Groups(['target.read', 'source.export'])]
+    #[Field(sortable: true, filterable: true, widget: Widget::Select, facet: true, order: 35, width: '6rem')]
+    public ?string $pivotLocale = null;
+
     #[Field(searchable: true, order: 50)]
     public $snippet {
         get => \mb_substr($this->targetText ?? '', 0, 40, 'UTF-8');

@@ -36,11 +36,15 @@ final class TargetTranslationApplier
     }
 
     /**
-     * @param string $rawTranslation the engine's output, untrimmed
+     * @param string      $rawTranslation the engine's output, untrimmed
+     * @param string|null $pivotLocale    locale the input text came from, when it was NOT the
+     *                                    source text — i.e. the English-hub route. Recorded as
+     *                                    provenance so a pivoted row is distinguishable from a
+     *                                    direct one; see Target::$pivotLocale.
      *
      * @return bool whether anything changed (false = empty result, left untouched)
      */
-    public function apply(Target $target, string $rawTranslation): bool
+    public function apply(Target $target, string $rawTranslation, ?string $pivotLocale = null): bool
     {
         $translation = trim($rawTranslation);
 
@@ -60,6 +64,13 @@ final class TargetTranslationApplier
         $sourceText = $target->source?->getText() ?? '';
 
         $target->targetText = $translation;
+        $target->pivotLocale = $pivotLocale;
+
+        // Compared against the ORIGINAL source text even on a pivoted row. "identical" means
+        // "the client gets back what it sent" — that is what a consumer acts on. Comparing
+        // against the English intermediate instead would flag a Danish→Hungarian row as
+        // identical whenever the English and Hungarian happened to match, which is not the
+        // question anyone is asking.
         $target->setMarking($translation === $sourceText
             ? TargetWorkflowInterface::PLACE_IDENTICAL
             : TargetWorkflowInterface::PLACE_TRANSLATED);
