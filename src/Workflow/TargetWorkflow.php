@@ -3,6 +3,7 @@
 namespace App\Workflow;
 
 use App\Entity\Target;
+use App\Service\TargetTranslationApplier;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Survos\DebugUtils\Assert;
@@ -25,6 +26,7 @@ final class TargetWorkflow
     public function __construct(
         private readonly EntityManagerInterface             $entityManager,
         private readonly TranslatorManager $manager,
+        private readonly TargetTranslationApplier          $applier,
         private LoggerInterface                             $logger
     )
     {
@@ -64,41 +66,21 @@ final class TargetWorkflow
         $from = $source->locale;
         // info, not warning: this fires once per string translated (routine, not an
         // anomaly) — needs -v to see, same as any other progress-narration log.
-        $this->logger->info(sprintf('[%s->%s] %s', $from, $targetLocale, $this->snippet($sourceText)));
+        $this->logger->info(sprintf('[%s->%s] %s', $from, $targetLocale, TargetTranslationApplier::snippet($sourceText)));
         $response = $translator->translate(new TranslationRequest(
             $sourceText,
             $source->locale,
             $targetLocale,
         ));
-        $translation = trim($response->translatedText);
-        $target->targetText = $translation;
 
-        $target->setMarking($translation === $sourceText ? TargetWorkflowInterface::PLACE_IDENTICAL : TargetWorkflowInterface::PLACE_TRANSLATED);
-        $this->logger->info(sprintf(
-            '%s [%s->%s] %s -> %s',
-            $target->getMarking(),
-            $from,
-            $targetLocale,
-            $this->snippet($sourceText),
-            $this->snippet($translation),
-        ));
+        // Writing the result — and deciding translated-vs-identical — belongs to
+        // TargetTranslationApplier, which TranslateBatchMessageHandler also calls. One string
+        // per HTTP request is the SLOW path; it stays because every TransitionMessage already
+        // in the queue still arrives here, but the two must not disagree about what a
+        // translation means. See App\Message\TranslateBatchMessage.
+        $this->applier->apply($target, $response->translatedText);
 
         $this->entityManager->flush();
-    }
-
-    /**
-     * Trim long text for log lines, appending the real char count when trimmed — a long
-     * source/target string is exactly what explains a slow translation call, so the count
-     * needs to survive the trim rather than disappear with the cut text.
-     */
-    private function snippet(string $text, int $max = 60): string
-    {
-        $len = mb_strlen($text);
-        if ($len <= $max) {
-            return $text;
-        }
-
-        return mb_substr($text, 0, $max) . "… ({$len} chars)";
     }
 
 }

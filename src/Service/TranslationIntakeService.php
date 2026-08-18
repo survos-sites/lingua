@@ -7,6 +7,7 @@ use App\Entity\Source;
 use App\Entity\Target;
 use App\Entity\TranslationSubscription;
 use App\Message\FlushTranslationNotificationsMessage;
+use App\Message\TranslateBatchMessage;
 use App\Repository\SourceRepository;
 use App\Repository\TargetRepository;
 use App\Workflow\TargetWorkflowInterface;
@@ -22,6 +23,18 @@ use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 final class TranslationIntakeService
 {
+    /**
+     * Targets per TranslateBatchMessage.
+     *
+     * Sized against what actually constrains the two ends, neither of which is the engine:
+     * babel.survos.com has LT_BATCH_LIMIT/LT_CHAR_LIMIT/LT_REQ_LIMIT all at -1 (unlimited).
+     * What does bite is (a) the HTTP client's idle timeout — a 200-phrase batch of long free
+     * text already tripped it on mus/saveoursigns — and (b) redelivery cost, since a failed
+     * batch re-translates the whole chunk. 100 keeps a chunk well inside the timeout for
+     * museum-length strings while still collapsing ~99% of the per-request overhead.
+     */
+    private const int TRANSLATE_CHUNK = 100;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly SourceRepository       $sourceRepository,
@@ -207,7 +220,14 @@ final class TranslationIntakeService
         }
 
         // 5) Create missing targets + decide dispatch list
-        $toDispatch = []; // targetKey => true
+        //
+        // Keyed by TARGET LOCALE, not flat, because that is the unit one /translate call
+        // takes: `$from` and `$engine` are uniform across the whole request, so the locale is
+        // the only thing that splits a batch. Grouping here rather than hoping consecutive
+        // messages happen to match is the whole advantage of batching at dispatch time —
+        // see App\Message\TranslateBatchMessage.
+        /** @var array<string, list<string>> $toDispatch targetLocale => Target::$key[] */
+        $toDispatch = [];
         $createdTargets = 0;
         $eligibleExisting = 0;
 
@@ -221,13 +241,13 @@ final class TranslationIntakeService
                     $this->em->persist($t);
                     $targetByTuple[$tuple] = $t;
 
-                    $toDispatch[$t->key] = true;
+                    $toDispatch[$loc][] = $t->key;
                     $createdTargets++;
                     continue;
                 }
 
                 if ($forceDispatch || $t->getMarking() !== TargetWorkflowInterface::PLACE_TRANSLATED) {
-                    $toDispatch[$t->key] = true;
+                    $toDispatch[$loc][] = $t->key;
                     $eligibleExisting++;
                 }
             }
@@ -247,27 +267,32 @@ final class TranslationIntakeService
         }
 
         // TRANSITION_TRANSLATE is declared `async: true` (TargetWorkflowInterface), so
-        // AsyncQueueLocator::stamps() below ALWAYS attaches its own async-routed transport
-        // stamp for this transition — that silently overrides the $stamps built above from
+        // AsyncQueueLocator::stamps() ALWAYS attaches its own async-routed transport stamp for
+        // that transition — which silently overrode the $stamps built above from
         // $payload->transport, so a caller requesting transport=sync never actually got
-        // synchronous processing (only ever queued, regardless of what was requested). Force
-        // the locator into sync mode first so stamps() honors it instead of routing async.
+        // synchronous processing. That only applies to TransitionMessage; TranslateBatchMessage
+        // is routed by messenger.yaml and honours $stamps directly. The flag is still set for
+        // any TransitionMessage dispatched elsewhere in this request.
         if ($payload->transport === 'sync') {
             $this->asyncQueueLocator->sync = true;
         }
 
+        // ONE message per (locale, chunk), NOT one per Target. A push of 5,000 strings into
+        // three locales used to be 15,000 messages and 15,000 HTTP calls to LibreTranslate;
+        // it is now ~75 messages and ~75 calls, each carrying up to CHUNK strings in `q`.
+        //
+        // `queued` deliberately still counts TARGETS, not messages — it is the caller's answer
+        // to "how much work did you accept", and changing its meaning would silently break
+        // every client that reports it.
         $queued = 0;
-        foreach (array_keys($toDispatch) as $targetKey) {
-            $msg = new TransitionMessage(
-                $targetKey,
-                Target::class,
-                TargetWorkflowInterface::TRANSITION_TRANSLATE,
-                TargetWorkflowInterface::WORKFLOW_NAME
-            );
-
-            $queueStamps = $this->asyncQueueLocator->stamps($msg);
-            $this->bus->dispatch($msg, array_merge($stamps, $queueStamps));
-            $queued++;
+        foreach ($toDispatch as $targetLocale => $targetKeys) {
+            foreach (array_chunk($targetKeys, self::TRANSLATE_CHUNK) as $chunk) {
+                $this->bus->dispatch(
+                    new TranslateBatchMessage($from, (string) $targetLocale, $engine, $chunk),
+                    $stamps,
+                );
+                $queued += \count($chunk);
+            }
         }
 
         // 6b) Start the announce chain. ONE message per batch, never one per target: the

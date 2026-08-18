@@ -13,10 +13,15 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 /**
  * translateBatch -- the write half -- end to end over POST /api/v1.
  *
- * Dispatched jobs are counted in the messenger_messages table. state-bundle routes
- * TransitionMessage to a per-transition transport it registers itself (target.translate, on
- * doctrine://default = lingua_test here), so overriding `async` in the test env would have
- * had no effect on this path -- worth knowing before reaching for in-memory://.
+ * Dispatched jobs are counted in the messenger_messages table, on the target.translate
+ * transport (doctrine://default = lingua_test here) that state-bundle registers for the
+ * `async: true` translate transition -- so overriding `async` in the test env would have no
+ * effect on this path, worth knowing before reaching for in-memory://.
+ *
+ * NOTE the counts here are MESSAGES, not targets, and since 2026-08-18 those differ: intake
+ * dispatches one TranslateBatchMessage per (target locale, chunk of 100) rather than one
+ * TransitionMessage per Target. `result.queued` still counts targets. A test that asserts
+ * one row per target is asserting the thing the batching removed.
  */
 final class TranslateBatchMethodTest extends WebTestCase
 {
@@ -70,7 +75,13 @@ final class TranslateBatchMethodTest extends WebTestCase
         self::assertSame(4, $body['result']['queued']);
         self::assertSame([], $body['result']['missing']);
         self::assertCount(2, $body['result']['items']);
-        self::assertSame(4, $this->queuedJobRowCount());
+
+        // FOUR targets, TWO messages — one TranslateBatchMessage per target locale, each
+        // carrying both target keys. `queued` still counts TARGETS (the caller's answer to
+        // "how much work did you accept"); the row count is what changed, and it is the
+        // whole point: one /translate call per locale instead of one per string.
+        // See App\Message\TranslateBatchMessage.
+        self::assertSame(2, $this->queuedJobRowCount());
 
         self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM source'));
         self::assertSame(4, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM target'));
@@ -230,7 +241,9 @@ final class TranslateBatchMethodTest extends WebTestCase
 
         self::assertSame(2, $byId['es']['result']['queued']);
         self::assertSame(1, $byId['fr']['result']['queued']);
-        self::assertSame(3, $this->queuedJobRowCount());
+        // 3 targets, but 2 messages: each RPC call in the batch requests a single locale, so
+        // each produces one TranslateBatchMessage regardless of how many texts it carries.
+        self::assertSame(2, $this->queuedJobRowCount());
     }
 
     /** The REST route must keep its existing envelope; zm/bts/harvest parse it. */

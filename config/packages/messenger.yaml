@@ -33,6 +33,15 @@ framework:
             # decision rather than two.
             'App\Message\FlushTranslationNotificationsMessage': webhook
             'Symfony\Component\Webhook\Messenger\SendWebhookMessage': webhook
+            # Batched translation. Shares target.translate with the per-Target
+            # TransitionMessage path so ONE worker drains both — which matters right now,
+            # because ~62k TransitionMessages from the 2026-08-17 push are still in that
+            # queue and will keep arriving one string at a time until they clear.
+            #
+            # state-bundle auto-registers target.translate (doctrine://default) from the
+            # `async: true` on TRANSITION_TRANSLATE; naming it here just routes the new
+            # message to the same place.
+            'App\Message\TranslateBatchMessage': target.translate
 
 
 # NOTE: overriding `async` here would do nothing for the translate path. state-bundle
