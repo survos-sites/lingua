@@ -113,6 +113,49 @@ final class TranslateBatchMethodTest extends WebTestCase
     }
 
     /**
+     * When the English ALREADY exists, the spokes must pivot off it immediately rather than
+     * falling back to translating from the source.
+     *
+     * This is the regression test for the bug that shipped in the first cut: the route was
+     * chosen on "is there a hub leg to run", so a fully-translated English sent everything down
+     * the DIRECT path — which is precisely backwards, since es->en and da->en are ~100% done and
+     * that is where pivoting is free. Caught on mus/enterreno, where fr/de came back with
+     * pivot_locale NULL while a finished English sat unused next to them.
+     *
+     * Asserted as message count because that is what distinguishes the two routes: hub-pending
+     * dispatches ONE message (the hub, carrying its spokes), hub-ready dispatches one per spoke.
+     */
+    public function testSpokesPivotImmediatelyWhenTheEnglishAlreadyExists(): void
+    {
+        // First call builds es -> en.
+        $this->call([
+            'source' => 'es',
+            'target' => ['en'],
+            'texts' => ['hola mundo'],
+        ]);
+        $this->markEverythingTranslated();
+        $this->em->getConnection()->executeStatement("TRUNCATE messenger_messages RESTART IDENTITY");
+
+        // Now ask for fr and de. The English is done, so both dispatch NOW, pivoting.
+        $this->call([
+            'source' => 'es',
+            'target' => ['en', 'fr', 'de'],
+            'texts' => ['hola mundo'],
+        ]);
+
+        // Two spoke messages (fr, de) and no hub leg — the hub had nothing left to translate.
+        self::assertSame(2, $this->queuedJobRowCount());
+    }
+
+    /** Mark every Target translated, standing in for the workers having run. */
+    private function markEverythingTranslated(): void
+    {
+        $this->em->getConnection()->executeStatement(
+            "UPDATE target SET marking = 't', target_text = 'x' WHERE target_text IS NULL",
+        );
+    }
+
+    /**
      * An English source has no hub leg to run — `en` IS the hub — so every locale dispatches
      * immediately, exactly as before. This is the common case (830k of lingua's sources).
      */

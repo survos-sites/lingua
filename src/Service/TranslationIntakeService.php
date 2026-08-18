@@ -231,6 +231,14 @@ final class TranslationIntakeService
         $createdTargets = 0;
         $eligibleExisting = 0;
 
+        // Which Sources still need their English built, and which target key belongs to which
+        // Source. Both are needed at dispatch time to tell a spoke whose hub is ALREADY
+        // translated (dispatch it now, pivoting) from one that must wait for the hub leg.
+        /** @var array<int|string,true> $hubPendingSourceIds */
+        $hubPendingSourceIds = [];
+        /** @var array<string,int|string> $sourceIdByTargetKey */
+        $sourceIdByTargetKey = [];
+
         foreach ($toLocales as $loc) {
             foreach ($sources as $source) {
                 $tuple = $source->getId().'|'.$loc.'|'.$engine;
@@ -242,12 +250,20 @@ final class TranslationIntakeService
                     $targetByTuple[$tuple] = $t;
 
                     $toDispatch[$loc][] = $t->key;
+                    $sourceIdByTargetKey[(string) $t->key] = $source->getId();
+                    if ($loc === TranslateBatchMessage::HUB_LOCALE) {
+                        $hubPendingSourceIds[$source->getId()] = true;
+                    }
                     $createdTargets++;
                     continue;
                 }
 
                 if ($forceDispatch || $t->getMarking() !== TargetWorkflowInterface::PLACE_TRANSLATED) {
                     $toDispatch[$loc][] = $t->key;
+                    $sourceIdByTargetKey[(string) $t->key] = $source->getId();
+                    if ($loc === TranslateBatchMessage::HUB_LOCALE) {
+                        $hubPendingSourceIds[$source->getId()] = true;
+                    }
                     $eligibleExisting++;
                 }
             }
@@ -297,11 +313,26 @@ final class TranslationIntakeService
         // LibreTranslate pivots through English internally anyway, we just never saw it and
         // paid for it once per target language.
         //
-        // The hub leg goes first and carries the spoke list; TranslateBatchMessageHandler
-        // dispatches the spokes once the English exists. Nothing is dispatched for the spokes
-        // here, or they would race the hub and find no text to read.
-        if ($from !== $hub && isset($toDispatch[$hub]) && $spokeLocales !== []) {
-            foreach (array_chunk($toDispatch[$hub], self::TRANSLATE_CHUNK) as $chunk) {
+        // Two populations, and getting this wrong is silent. The first version keyed the whole
+        // decision on `isset($toDispatch[$hub])` and so fell back to the DIRECT route whenever
+        // the English was already complete — which is exactly the case worth optimising, since
+        // es->en and da->en are both ~100% done. Verified on mus/enterreno: fr and de came back
+        // with pivot_locale NULL, i.e. translated from Spanish while a finished English sat
+        // unused beside them.
+        //
+        //   hub PENDING  spokes ride along on the hub leg's thenLocales and are dispatched by
+        //                TranslateBatchMessageHandler once the English is committed. Nothing
+        //                is dispatched for them here, or they would race the hub and find no
+        //                text to read.
+        //   hub READY    dispatched immediately with pivotLocale — no hub leg needed, and the
+        //                spoke costs one pass instead of two for free.
+        //
+        // The two sets are disjoint by construction (a Source is in $hubPendingSourceIds or it
+        // is not), so nothing is dispatched twice and nothing is dropped.
+        if ($from !== $hub && $spokeLocales !== []) {
+            $hubKeys = $toDispatch[$hub] ?? [];
+
+            foreach (array_chunk($hubKeys, self::TRANSLATE_CHUNK) as $chunk) {
                 $this->bus->dispatch(
                     new TranslateBatchMessage($from, $hub, $engine, $chunk, thenLocales: $spokeLocales),
                     $stamps,
@@ -309,16 +340,35 @@ final class TranslationIntakeService
                 $queued += \count($chunk);
             }
 
-            // Counted as accepted even though their messages do not exist yet — the caller
-            // asked for them and they will be dispatched by the hub handler.
+            $readyCount = 0;
             foreach ($spokeLocales as $loc) {
-                $queued += \count($toDispatch[$loc]);
+                $ready = array_values(array_filter(
+                    $toDispatch[$loc],
+                    fn(string $key): bool => !isset($hubPendingSourceIds[$sourceIdByTargetKey[$key] ?? null]),
+                ));
+
+                foreach (array_chunk($ready, self::TRANSLATE_CHUNK) as $chunk) {
+                    $this->bus->dispatch(
+                        // sourceLocale is the HUB, not the original source — that is the pair
+                        // the engine is actually being asked for.
+                        new TranslateBatchMessage($hub, $loc, $engine, $chunk, pivotLocale: $hub),
+                        $stamps,
+                    );
+                    $queued += \count($chunk);
+                }
+                $readyCount += \count($ready);
+
+                // The rest are counted as accepted even though their messages do not exist
+                // yet — the caller asked for them, and the hub handler will dispatch them.
+                $queued += \count($toDispatch[$loc]) - \count($ready);
             }
 
             $this->logger->info('Lingua intake: english-hub route', [
                 'source' => $from,
                 'hub' => $hub,
                 'spokes' => $spokeLocales,
+                'hub_pending' => \count($hubKeys),
+                'spokes_pivoting_now' => $readyCount,
             ]);
         } else {
             // Direct route. Either the source IS English (en is already the hub, so every
