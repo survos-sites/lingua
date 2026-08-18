@@ -29,6 +29,7 @@
         "easycorp/easyadmin-bundle": "^4.29.16",
         "fguillot/json-rpc": "^1.5.0",
         "inspector-apm/inspector-symfony": "^1.11.5",
+        "jwage/phpamqplib-messenger": "^0.10.1",
         "nelmio/cors-bundle": "^2.6.1",
         "nyholm/psr7": "^1.8.2",
         "otezvikentiy/json-rpc-api": "^5.1",

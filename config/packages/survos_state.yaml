@@ -1,0 +1,39 @@
+survos_state:
+    # RabbitMQ for the per-transition transports state-bundle registers itself (target.translate
+    # is the one that matters here). Same arrangement as `packages`, via
+    # jwage/phpamqplib-messenger's dsn/vhost/exchange convention: one queue per async
+    # transition, instead of Doctrine's shared table filtered by queue_name.
+    #
+    # Why move: target.translate is the only high-volume queue in this app, and on Doctrine it
+    # lives in the SAME Postgres that serves the application. The 2026-08-17 push put ~62k rows
+    # in it, every worker polls it with SELECT ... FOR UPDATE SKIP LOCKED, and that cluster has
+    # been refusing connections from one-off containers ("SQLSTATE[08006] ... timeout expired",
+    # observed repeatedly on 2026-08-17/18) while app containers stayed fine. Taking the
+    # messenger load off it is the point.
+    queue_driver: rabbitmq
+    async_transport_dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+
+# Local dev and test stay on Doctrine, and that is not just inertia.
+#
+# Under RabbitMQ these messages are invisible to `messenger_messages` and to
+# zenstruck/messenger-monitor — which is precisely how a working kickoff came to look like a
+# broken one in packages on 2026-08-17 (a flat count of messenger_messages rows was read as
+# "nothing dispatched"). Locally you want every pending transition to be a row you can select.
+#
+# `when@test` is load-bearing, not decorative: TranslateBatchMethodTest asserts on row counts in
+# messenger_messages. Switching test to AMQP would make those assertions count zero forever
+# while the code underneath still worked.
+#
+# when@dev rather than an env var because queue_driver is an EnumNode — a '%env(...)%'
+# placeholder fails validation before it can be resolved ("The value "" is not allowed ...
+# Permissible values: doctrine, rabbitmq"). async_transport_dsn IS env-driven, because that one
+# is passed through as an opaque DSN string and resolved later.
+when@dev:
+    survos_state:
+        queue_driver: doctrine
+        async_transport_dsn: '%env(DOCTRINE_MESSENGER_TRANSPORT_DSN)%'
+
+when@test:
+    survos_state:
+        queue_driver: doctrine
+        async_transport_dsn: '%env(DOCTRINE_MESSENGER_TRANSPORT_DSN)%'

@@ -6,10 +6,25 @@ framework:
         transports:
             # https://symfony.com/doc/current/messenger.html#transport-configuration
 #             async: '%env(MESSENGER_TRANSPORT_DSN)%'
+             # STAYS on Doctrine on purpose. A failed message is one you want to look at and
+             # retry, and under AMQP it is invisible to both `messenger:failed:show` tooling
+             # backed by the table and to zenstruck/messenger-monitor. Same choice packages
+             # made.
              failed: 'doctrine://default?queue_name=failed'
              sync: 'sync://'
              async:
                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+
+             # NOTE: moving target.translate to AMQP orphans the ~62k TransitionMessages the
+             # 2026-08-17 push left in Postgres — the worker now reads an AMQP queue that
+             # starts empty. That is deliberate and cheap: those are one-string-per-message
+             # jobs, and re-pushing the same datasets regenerates them as batched
+             # TranslateBatchMessages (~100 targets per message), which is both faster and
+             # what we want in the queue anyway. Purge the dead rows rather than draining them:
+             #   DELETE FROM messenger_messages WHERE queue_name = 'target.translate';
+             # Also stays on Doctrine: low volume (one message per page of 500 translations),
+             # and being able to see a stuck delivery as a row is worth more here than the
+             # throughput AMQP would add.
              # Outbound translation.completed delivery, plus the flush that produces it.
              # Its own transport because it is the only work here that depends on someone
              # else's uptime, so it is the only queue that will sit in retry — and a
