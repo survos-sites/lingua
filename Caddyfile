@@ -1,0 +1,22 @@
+{
+	frankenphp
+}
+
+:{$PORT:80} {
+	root * /app/public
+
+	# No `encode` directive: lingua.survos.com is Cloudflare-proxied, and Cloudflare
+	# compresses on the way to the browser regardless of what the origin sends.
+	# Adding it here is a layer that can go wrong in transit -- confirmed live on
+	# packages with zstd (valid at the origin, every asset broke in the browser with
+	# net::ERR_CONTENT_DECODING_FAILED once it hit Cloudflare's edge).
+
+	# Bulk translation POSTs from harvest/zm can be large -- the ash nginx snippet
+	# for babel raised client_max_body_size to 25m for exactly this traffic, and
+	# lingua is the other end of it.
+	request_body {
+		max_size 32MB
+	}
+
+	php_server
+}
