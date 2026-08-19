@@ -24,14 +24,34 @@ use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 final class TranslationIntakeService
 {
     /**
-     * Targets per TranslateBatchMessage.
+     * Characters per TranslateBatchMessage — the PRIMARY bound.
      *
-     * Sized against what actually constrains the two ends, neither of which is the engine:
-     * babel.survos.com has LT_BATCH_LIMIT/LT_CHAR_LIMIT/LT_REQ_LIMIT all at -1 (unlimited).
-     * What does bite is (a) the HTTP client's idle timeout — a 200-phrase batch of long free
-     * text already tripped it on mus/saveoursigns — and (b) redelivery cost, since a failed
-     * batch re-translates the whole chunk. 100 keeps a chunk well inside the timeout for
-     * museum-length strings while still collapsing ~99% of the per-request overhead.
+     * Translation cost scales with text volume, not with array length, so a count alone cannot
+     * bound the work: 100 vocabulary terms ("Papír", "egyéni") and 100 museum descriptions differ
+     * by orders of magnitude while both being "100". Sizing by count is why this has now tripped
+     * the same idle timeout twice — first at 200 on mus/saveoursigns, then again at 100 on
+     * musdig, where a 100-key batch died at exactly 60s and burned three redeliveries before
+     * landing in the failure transport.
+     *
+     * Measured on fsn1 2026-08-19 against libretranslate.survos.com, unique texts, while the
+     * engine was already at ~490% CPU: 100 short strings (~1.7k chars) took 11.8s — roughly
+     * 0.007 s/char under contention. Against the 60s idle timeout that puts the ceiling near
+     * 8.5k chars, so 5k leaves meaningful headroom for longer strings and a busier engine while
+     * still collapsing nearly all per-request overhead.
+     *
+     * Note the engine itself is not the constraint: babel.survos.com runs LT_BATCH_LIMIT /
+     * LT_CHAR_LIMIT / LT_REQ_LIMIT all at -1 (unlimited). What bites is the HTTP client's idle
+     * timeout, and redelivery cost — a failed batch re-translates the whole chunk, so a smaller
+     * chunk is also a cheaper retry.
+     */
+    private const int TRANSLATE_CHUNK_CHARS = 5_000;
+
+    /**
+     * Targets per TranslateBatchMessage — a SECONDARY hard cap.
+     *
+     * Chars alone would let ten thousand one-word terms into a single message; this bounds the
+     * array size, the serialized envelope, and the blast radius of one redelivery regardless of
+     * how short the texts are.
      */
     private const int TRANSLATE_CHUNK = 100;
 
@@ -238,6 +258,11 @@ final class TranslationIntakeService
         $hubPendingSourceIds = [];
         /** @var array<string,int|string> $sourceIdByTargetKey */
         $sourceIdByTargetKey = [];
+        // Text length per target key, captured here because $source is in scope and the chunker
+        // downstream only ever sees keys. Measuring at dispatch avoids a second pass over the
+        // sources purely to ask "how big is this really?".
+        /** @var array<string,int> $charsByTargetKey */
+        $charsByTargetKey = [];
 
         foreach ($toLocales as $loc) {
             foreach ($sources as $source) {
@@ -251,6 +276,7 @@ final class TranslationIntakeService
 
                     $toDispatch[$loc][] = $t->key;
                     $sourceIdByTargetKey[(string) $t->key] = $source->getId();
+                    $charsByTargetKey[(string) $t->key] = mb_strlen((string) $source->getText());
                     if ($loc === TranslateBatchMessage::HUB_LOCALE) {
                         $hubPendingSourceIds[$source->getId()] = true;
                     }
@@ -261,6 +287,7 @@ final class TranslationIntakeService
                 if ($forceDispatch || $t->getMarking() !== TargetWorkflowInterface::PLACE_TRANSLATED) {
                     $toDispatch[$loc][] = $t->key;
                     $sourceIdByTargetKey[(string) $t->key] = $source->getId();
+                    $charsByTargetKey[(string) $t->key] = mb_strlen((string) $source->getText());
                     if ($loc === TranslateBatchMessage::HUB_LOCALE) {
                         $hubPendingSourceIds[$source->getId()] = true;
                     }
@@ -332,7 +359,7 @@ final class TranslationIntakeService
         if ($from !== $hub && $spokeLocales !== []) {
             $hubKeys = $toDispatch[$hub] ?? [];
 
-            foreach (array_chunk($hubKeys, self::TRANSLATE_CHUNK) as $chunk) {
+            foreach ($this->chunkByChars($hubKeys, $charsByTargetKey) as $chunk) {
                 $this->bus->dispatch(
                     new TranslateBatchMessage($from, $hub, $engine, $chunk, thenLocales: $spokeLocales),
                     $stamps,
@@ -347,7 +374,7 @@ final class TranslationIntakeService
                     fn(string $key): bool => !isset($hubPendingSourceIds[$sourceIdByTargetKey[$key] ?? null]),
                 ));
 
-                foreach (array_chunk($ready, self::TRANSLATE_CHUNK) as $chunk) {
+                foreach ($this->chunkByChars($ready, $charsByTargetKey) as $chunk) {
                     $this->bus->dispatch(
                         // sourceLocale is the HUB, not the original source — that is the pair
                         // the engine is actually being asked for.
@@ -377,7 +404,7 @@ final class TranslationIntakeService
             // into a language the caller never asked for, which is a decision for the caller,
             // not for intake.
             foreach ($toDispatch as $targetLocale => $targetKeys) {
-                foreach (array_chunk($targetKeys, self::TRANSLATE_CHUNK) as $chunk) {
+                foreach ($this->chunkByChars($targetKeys, $charsByTargetKey) as $chunk) {
                     $this->bus->dispatch(
                         new TranslateBatchMessage($from, (string) $targetLocale, $engine, $chunk),
                         $stamps,
@@ -449,6 +476,51 @@ final class TranslationIntakeService
      *
      * @return int subscriptions written
      */
+    /**
+     * Split target keys into batches bounded by TOTAL CHARACTERS first and count second.
+     *
+     * array_chunk() sized by count treats a one-word vocabulary term and a paragraph of museum
+     * prose as equal units, which they are not — see TRANSLATE_CHUNK_CHARS for why that keeps
+     * tripping the engine's idle timeout.
+     *
+     * A single text larger than the whole budget still gets dispatched, alone, rather than
+     * dropped: it will probably be slow, but silently discarding a phrase because it is long
+     * would lose data, and a one-key batch is the smallest possible retry if it does fail.
+     *
+     * Keys with no recorded length count as 0 rather than being skipped. An unmeasured key is a
+     * bookkeeping gap, not an empty string, and must still reach the engine — the count cap
+     * bounds the damage if many of them land in one batch.
+     *
+     * @param list<string>       $keys
+     * @param array<string,int>  $charsByKey target key => source text length
+     *
+     * @return \Generator<int, list<string>>
+     */
+    private function chunkByChars(array $keys, array $charsByKey): \Generator
+    {
+        $batch = [];
+        $chars = 0;
+
+        foreach ($keys as $key) {
+            $len = $charsByKey[(string) $key] ?? 0;
+
+            // Flush before adding when this key would push us past either bound. Checked before
+            // the append so a batch never exceeds the budget, only ever meets it.
+            if ($batch !== [] && ($chars + $len > self::TRANSLATE_CHUNK_CHARS || \count($batch) >= self::TRANSLATE_CHUNK)) {
+                yield $batch;
+                $batch = [];
+                $chars = 0;
+            }
+
+            $batch[] = $key;
+            $chars += $len;
+        }
+
+        if ($batch !== []) {
+            yield $batch;
+        }
+    }
+
     private function subscribe(?string $callbackUrl, array $targetByTuple, array $byHash, array $refByText): int
     {
         $callbackUrl = trim((string) $callbackUrl);
