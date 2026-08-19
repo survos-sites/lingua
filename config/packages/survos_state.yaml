@@ -11,28 +11,33 @@ survos_state:
     # observed repeatedly on 2026-08-17/18) while app containers stayed fine. Taking the
     # messenger load off it is the point.
     queue_driver: rabbitmq
-    async_transport_dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+    async_transport_dsn: '%env(MESSENGER_TRANSPORT_DSN_RABBITMQ)%'
 
-# Local dev and test stay on Doctrine, and that is not just inertia.
+# DEV NOW RUNS ON RABBIT TOO — the same reasoning as running Postgres rather than SQLite
+# locally: the broker is what production uses, so it is what dev should exercise. A dev/prod
+# split here is exactly how a broker-only bug reaches production unnoticed, and the Doctrine
+# fallback is the thing you opt INTO for a debugging session, not the default. There is a
+# RabbitMQ running locally (survos_rabbitmq, rabbitmq:4-management).
 #
-# Under RabbitMQ these messages are invisible to `messenger_messages` and to
-# zenstruck/messenger-monitor — which is precisely how a working kickoff came to look like a
-# broken one in packages on 2026-08-17 (a flat count of messenger_messages rows was read as
-# "nothing dispatched"). Locally you want every pending transition to be a row you can select.
+# What you give up locally: under RabbitMQ these messages are invisible to
+# `messenger_messages` and to zenstruck/messenger-monitor — which is precisely how a working
+# kickoff came to look like a broken one in packages on 2026-08-17 (a flat count of
+# messenger_messages rows was read as "nothing dispatched"). The management UI on :15672
+# covers queue depth; to get inspectable rows back, re-add:
 #
-# `when@test` is load-bearing, not decorative: TranslateBatchMethodTest asserts on row counts in
-# messenger_messages. Switching test to AMQP would make those assertions count zero forever
-# while the code underneath still worked.
+#   when@dev:
+#       survos_state:
+#           queue_driver: doctrine
+#           async_transport_dsn: '%env(DOCTRINE_MESSENGER_TRANSPORT_DSN)%'
 #
-# when@dev rather than an env var because queue_driver is an EnumNode — a '%env(...)%'
+# `when@test` below stays on Doctrine and is load-bearing, not inertia: TranslateBatchMethodTest
+# asserts on row counts in messenger_messages, and CI has no broker. Switching test to AMQP
+# would make those assertions count zero forever while the code underneath still worked.
+#
+# queue_driver is set per-env rather than by env var because it is an EnumNode — a '%env(...)%'
 # placeholder fails validation before it can be resolved ("The value "" is not allowed ...
 # Permissible values: doctrine, rabbitmq"). async_transport_dsn IS env-driven, because that one
 # is passed through as an opaque DSN string and resolved later.
-when@dev:
-    survos_state:
-        queue_driver: doctrine
-        async_transport_dsn: '%env(DOCTRINE_MESSENGER_TRANSPORT_DSN)%'
-
 when@test:
     survos_state:
         queue_driver: doctrine

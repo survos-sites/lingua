@@ -13,7 +13,7 @@ framework:
              failed: 'doctrine://default?queue_name=failed'
              sync: 'sync://'
              async:
-               dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+               dsn: '%env(MESSENGER_TRANSPORT_DSN_RABBITMQ)%/async'
 
              # NOTE: moving target.translate to AMQP orphans the ~62k TransitionMessages the
              # 2026-08-17 push left in Postgres — the worker now reads an AMQP queue that

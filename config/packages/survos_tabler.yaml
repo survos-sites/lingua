@@ -1,0 +1,11 @@
+survos_tabler:
+    # Without this block the bundle's own defaults render, which is why the navbar brand read
+    # "myProject" (the default `abbr` is literally `my<b>Project</b>`) even though the page
+    # <title> was already correct -- that comes from the template, not from here.
+    app:
+        code: rsun
+        title: 'Survos Translation Server'
+        description: 'Translation server with extensive caching'
+        # The <b> is the convention the default uses: the second half renders bold in the navbar.
+        abbr: 'Lingua'
+        homepage_route: app_homepage
