@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "644a0daa0fbb28bec17533c2d9946c9f",
+    "content-hash": "4e10b8f71d1002b85a1298ac75cdaf3f",
     "packages": [
         {
             "name": "api-platform/core",
@@ -2937,16 +2937,16 @@
         },
         {
             "name": "otezvikentiy/json-rpc-api",
-            "version": "5.1-stable",
+            "version": "5.2-stable",
             "source": {
                 "type": "git",
                 "url": "https://github.com/OtezVikentiy/symfony-jsonrpc-api-bundle.git",
-                "reference": "f45cfd3903d2c1dfb8e59b90df547948263f50f4"
+                "reference": "30e3a5f5e600a8ea03d4353ac9f8bbe4699d47bc"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/OtezVikentiy/symfony-jsonrpc-api-bundle/zipball/f45cfd3903d2c1dfb8e59b90df547948263f50f4",
-                "reference": "f45cfd3903d2c1dfb8e59b90df547948263f50f4",
+                "url": "https://api.github.com/repos/OtezVikentiy/symfony-jsonrpc-api-bundle/zipball/30e3a5f5e600a8ea03d4353ac9f8bbe4699d47bc",
+                "reference": "30e3a5f5e600a8ea03d4353ac9f8bbe4699d47bc",
                 "shasum": ""
             },
             "require": {
@@ -3008,7 +3008,7 @@
                 "security": "https://github.com/OtezVikentiy/symfony-jsonrpc-api-bundle/security/policy",
                 "source": "https://github.com/OtezVikentiy/symfony-jsonrpc-api-bundle"
             },
-            "time": "2026-08-10T15:53:25+00:00"
+            "time": "2026-08-17T20:31:49+00:00"
         },
         {
             "name": "paragonie/constant_time_encoding",
@@ -3131,16 +3131,16 @@
         },
         {
             "name": "paragonie/sodium_compat",
-            "version": "v2.5.0",
+            "version": "v2.5.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/paragonie/sodium_compat.git",
-                "reference": "4714da6efdc782c06690bc72ce34fae7941c2d9f"
+                "reference": "3246b36803c177847e677862fedeb7f937869adb"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/paragonie/sodium_compat/zipball/4714da6efdc782c06690bc72ce34fae7941c2d9f",
-                "reference": "4714da6efdc782c06690bc72ce34fae7941c2d9f",
+                "url": "https://api.github.com/repos/paragonie/sodium_compat/zipball/3246b36803c177847e677862fedeb7f937869adb",
+                "reference": "3246b36803c177847e677862fedeb7f937869adb",
                 "shasum": ""
             },
             "require": {
@@ -3221,9 +3221,9 @@
             ],
             "support": {
                 "issues": "https://github.com/paragonie/sodium_compat/issues",
-                "source": "https://github.com/paragonie/sodium_compat/tree/v2.5.0"
+                "source": "https://github.com/paragonie/sodium_compat/tree/v2.5.2"
             },
-            "time": "2025-12-30T16:12:18+00:00"
+            "time": "2026-08-18T23:46:48+00:00"
         },
         {
             "name": "php-amqplib/php-amqplib",
@@ -4721,16 +4721,16 @@
         },
         {
             "name": "survos/deployment-bundle",
-            "version": "2.24.8",
+            "version": "2.24.22",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/deployment-bundle.git",
-                "reference": "41935c82350f4ca218ba5496ed99581d1e7458b3"
+                "reference": "7ca9f15957d1c5705842f67a019488ae0a07aba2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/deployment-bundle/zipball/41935c82350f4ca218ba5496ed99581d1e7458b3",
-                "reference": "41935c82350f4ca218ba5496ed99581d1e7458b3",
+                "url": "https://api.github.com/repos/survos/deployment-bundle/zipball/7ca9f15957d1c5705842f67a019488ae0a07aba2",
+                "reference": "7ca9f15957d1c5705842f67a019488ae0a07aba2",
                 "shasum": ""
             },
             "require": {
@@ -4770,7 +4770,7 @@
             ],
             "support": {
                 "issues": "https://github.com/survos/deployment-bundle/issues",
-                "source": "https://github.com/survos/deployment-bundle/tree/2.24.8"
+                "source": "https://github.com/survos/deployment-bundle/tree/2.24.22"
             },
             "funding": [
                 {
@@ -4778,7 +4778,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-16T17:12:47+00:00"
+            "time": "2026-08-19T11:02:30+00:00"
         },
         {
             "name": "survos/ez-bundle",
@@ -5167,16 +5167,16 @@
         },
         {
             "name": "survos/lingua-bundle",
-            "version": "2.24.16",
+            "version": "2.24.22",
             "source": {
                 "type": "git",
                 "url": "https://github.com/survos/lingua-bundle.git",
-                "reference": "25257c855463b9e553434c68847d001dc060dfad"
+                "reference": "967bcae13ed87d00cc9c6db4cbd94694a2b9e8a9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/survos/lingua-bundle/zipball/25257c855463b9e553434c68847d001dc060dfad",
-                "reference": "25257c855463b9e553434c68847d001dc060dfad",
+                "url": "https://api.github.com/repos/survos/lingua-bundle/zipball/967bcae13ed87d00cc9c6db4cbd94694a2b9e8a9",
+                "reference": "967bcae13ed87d00cc9c6db4cbd94694a2b9e8a9",
                 "shasum": ""
             },
             "require": {
@@ -5227,7 +5227,7 @@
             ],
             "support": {
                 "issues": "https://github.com/survos/lingua-bundle/issues",
-                "source": "https://github.com/survos/lingua-bundle/tree/2.24.16"
+                "source": "https://github.com/survos/lingua-bundle/tree/2.24.22"
             },
             "funding": [
                 {
@@ -5235,7 +5235,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-17T22:24:30+00:00"
+            "time": "2026-08-19T11:02:25+00:00"
         },
         {
             "name": "survos/lingua-contracts",

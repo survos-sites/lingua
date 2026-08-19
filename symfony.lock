@@ -184,6 +184,9 @@
     "survos/atlas-bundle": {
         "version": "2.0.217"
     },
+    "survos/auth-bundle": {
+        "version": "2.7.23"
+    },
     "survos/babel-bundle": {
         "version": "2.0.77"
     },

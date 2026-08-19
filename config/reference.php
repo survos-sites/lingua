@@ -2068,6 +2068,11 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     max_batch_size?: int|Param, // Default: 50
  *     max_dto_depth?: int|Param, // Default: 10
  *     max_array_param_size?: int|Param, // Default: 1000
+ *     multipart?: array{
+ *         enabled?: bool|Param, // Default: false
+ *         max_file_bytes?: scalar|Param|null, // Default: "10Mi"
+ *         max_files?: int|Param, // Default: 10
+ *     },
  *     logging?: array{
  *         enabled?: bool|Param, // Default: false
  *         request_level?: scalar|Param|null, // Default: "info"
