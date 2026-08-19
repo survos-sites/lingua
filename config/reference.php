@@ -2117,6 +2117,33 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  * @psalm-type SurvosFetchConfig = array{
  *     persistent_cache_path?: scalar|Param|null, // SQLite file backing PersistentFetcher -- an app-controlled-TTL cache independent of what (if anything) the origin sends as Cache-Control/Expires. Deliberately outside %kernel.cache_dir% so it survives cache:clear. // Default: "%kernel.project_dir%/var/data/fetch_cache.db"
  * }
+ * @psalm-type KnpuOauth2ClientConfig = array{
+ *     http_client?: scalar|Param|null, // Service id of HTTP client to use (must implement GuzzleHttp\ClientInterface) // Default: null
+ *     http_client_options?: array{
+ *         timeout?: int|Param,
+ *         proxy?: scalar|Param|null,
+ *         verify?: bool|Param, // Use only with proxy option set
+ *     },
+ *     clients?: array<string, array<string, mixed>>,
+ * }
+ * @psalm-type SurvosAuthConfig = array{
+ *     routes_enabled?: bool|Param, // Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off. // Default: true
+ *     route_prefix?: scalar|Param|null, // URL prefix applied to all routes from this bundle. // Default: "/auth"
+ *     locale_prefix?: bool|Param, // Prepend {_locale} (constrained to kernel.enabled_locales) to this bundle's route prefix, e.g. /{_locale}/f instead of /f -- for bundles whose routes are meant to be shared/bookmarked, so the URL itself carries the locale instead of a query param. // Default: false
+ *     providers?: array<string, array{ // Default: []
+ *         type?: scalar|Param|null, // Default: null
+ *         client_id?: scalar|Param|null, // Default: null
+ *         client_secret?: scalar|Param|null, // Default: null
+ *         scopes?: list<scalar|Param|null>,
+ *         redirect_route?: scalar|Param|null, // Default: null
+ *         redirect_params?: list<scalar|Param|null>,
+ *         use_state?: bool|Param|null, // Default: null
+ *     }>,
+ *     new_user_redirect_route?: scalar|Param|null, // Default: "oauth_profile"
+ *     production_url_base?: scalar|Param|null, // Default: null
+ *     user_provider?: scalar|Param|null, // Default: null
+ *     user_class?: scalar|Param|null, // Default: "App\\Entity\\User"
+ * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,
  *     parameters?: ParametersConfig,
@@ -2150,6 +2177,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     survos_ez?: SurvosEzConfig,
  *     ov_json_rpc_api?: OvJsonRpcApiConfig,
  *     survos_fetch?: SurvosFetchConfig,
+ *     knpu_oauth2_client?: KnpuOauth2ClientConfig,
+ *     survos_auth?: SurvosAuthConfig,
  *     "when@dev"?: array{
  *         imports?: ImportsConfig,
  *         parameters?: ParametersConfig,
@@ -2187,6 +2216,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_ez?: SurvosEzConfig,
  *         ov_json_rpc_api?: OvJsonRpcApiConfig,
  *         survos_fetch?: SurvosFetchConfig,
+ *         knpu_oauth2_client?: KnpuOauth2ClientConfig,
+ *         survos_auth?: SurvosAuthConfig,
  *     },
  *     "when@prod"?: array{
  *         imports?: ImportsConfig,
@@ -2221,6 +2252,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_ez?: SurvosEzConfig,
  *         ov_json_rpc_api?: OvJsonRpcApiConfig,
  *         survos_fetch?: SurvosFetchConfig,
+ *         knpu_oauth2_client?: KnpuOauth2ClientConfig,
+ *         survos_auth?: SurvosAuthConfig,
  *     },
  *     "when@test"?: array{
  *         imports?: ImportsConfig,
@@ -2257,6 +2290,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_ez?: SurvosEzConfig,
  *         ov_json_rpc_api?: OvJsonRpcApiConfig,
  *         survos_fetch?: SurvosFetchConfig,
+ *         knpu_oauth2_client?: KnpuOauth2ClientConfig,
+ *         survos_auth?: SurvosAuthConfig,
  *     },
  *     ...<string, ExtensionType|array{ // extra keys must follow the when@%env% pattern or match an extension alias
  *         imports?: ImportsConfig,

@@ -24,6 +24,15 @@ class SourceCrudController extends AbstractCrudController
         yield IntegerField::new('length');
         yield TextField::new('snippet');
         yield TextField::new('hash');
-        yield AssociationField::new('targets');
+        // hideOnForm, NOT autocomplete: an edit form renders an association as a choice widget,
+        // which hydrates every candidate row. Source::$targets is a OneToMany over a table with
+        // ~2.9M rows, so opening /admin/source/{id}/edit tried to load all of them and died at
+        // the 512MB limit (OutOfMemoryError in ObjectHydrator/UnitOfWork). Index and detail are
+        // unaffected — EasyAdmin only counts there, which is why paging worked and edit did not.
+        //
+        // Hidden rather than autocompleted because this is the INVERSE side: a Target belongs to
+        // its Source and is created by the translation pipeline. There is no case for assigning
+        // targets to a source by hand, so the field has no business on the form at all.
+        yield AssociationField::new('targets')->hideOnForm();
     }
 }

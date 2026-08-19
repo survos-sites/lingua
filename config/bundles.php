@@ -42,4 +42,11 @@ return [
     OV\JsonRPCAPIBundle\OVJsonRPCAPIBundle::class => ['all' => true],
     Survos\FetchBundle\SurvosFetchBundle::class => ['all' => true],
     Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle::class => ['all' => true],
+    KnpU\OAuth2ClientBundle\KnpUOAuth2ClientBundle::class => ['all' => true],
+    // Registered by hand: Flex never added it on install, even though the package satisfies both
+    // of its conditions (type: symfony-bundle, and the literal marker string that
+    // SymfonyBundle::isBundleClass() greps for). Cause not yet found — see the note in
+    // Survos\Kit\AbstractSurvosBundle. Without this line the bundle never boots, so none of its
+    // services load and survos:user:create and friends are absent from bin/console.
+    Survos\AuthBundle\SurvosAuthBundle::class => ['all' => true],
 ];

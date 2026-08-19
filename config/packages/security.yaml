@@ -4,14 +4,26 @@ security:
         Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
     # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
     providers:
-        users_in_memory: { memory: null }
+        # used to reload user from session & other features (e.g. switch_user)
+        app_user_provider:
+            entity:
+                class: App\Entity\User
+                property: email
     firewalls:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
         main:
             lazy: true
-            provider: users_in_memory
+            provider: app_user_provider
+            form_login:
+                login_path: app_login
+                check_path: app_login
+                enable_csrf: true
+            logout:
+                path: app_logout
+                # where to redirect after logout
+                # target: app_any_route
 
             # activate different ways to authenticate
             # https://symfony.com/doc/current/security.html#the-firewall
@@ -22,8 +34,44 @@ security:
     # Easy way to control access for large sections of your site
     # Note: Only the *first* access control that matches will be used
     access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+        # Machine-to-machine surface, deliberately open. harvest's dataset:intl:push and
+        # dataset:intl:pull talk to this app over HTTP -- API Platform under /api for reads and
+        # the JSON-RPC endpoint (ov_json_rpc_api, /api/v{version}) for the batch push. Gate these
+        # and the translation pipeline stops, silently, from the other end. They want a token
+        # authenticator rather than a login form; until then they stay PUBLIC_ACCESS and the
+        # exposure is bounded by what the API actually offers -- sources/targets are declared
+        # read-only (only _get and _get_collection routes exist).
+        # Every route Survos\LinguaBundle\Service\LinguaClient calls must be listed here. It uses
+        # THREE and only one of them lives under /api, so "open up /api" is not sufficient:
+        #   ROUTE_RPC   = /api/v1          (jsonrpc — dataset:intl:push)
+        #   ROUTE_PULL  = /babel/pull      (dataset:intl:pull)
+        #   ROUTE_BATCH = /batch-translate (api_queue_translation)
+        # Miss one and the pipeline fails from the far end: harvest gets a 302 to a login form,
+        # which is not an error it reports usefully. If LinguaClient gains a route, add it here.
+        - { path: ^/api, roles: PUBLIC_ACCESS }
+        - { path: ^/babel, roles: PUBLIC_ACCESS }
+        - { path: '^/batch-translate$', roles: PUBLIC_ACCESS }
+
+        # Uptime checks and monitoring, hit with no credentials by design.
+        - { path: ^/health, roles: PUBLIC_ACCESS }
+        - { path: '^/status\.json$', roles: PUBLIC_ACCESS }
+
+        # Authentication itself, including survos/auth-bundle's own routes (/auth/login,
+        # /auth/register, /auth/social_login/{clientKey}). Anonymous access here is the point.
+        - { path: ^/login, roles: PUBLIC_ACCESS }
+        - { path: ^/logout, roles: PUBLIC_ACCESS }
+        - { path: ^/register, roles: PUBLIC_ACCESS }
+        - { path: ^/auth, roles: PUBLIC_ACCESS }
+
+        # ROLE_ADMIN, not ROLE_USER: registration is open (/register and auth_register), so
+        # ROLE_USER is self-service and would gate nothing. EasyAdmin here exposes ~1.19M Source
+        # and ~2.9M Target rows plus working delete forms -- and until now it answered 200 to the
+        # anonymous internet, which is how a crawler ended up walking it and OOMing the box.
+        - { path: ^/admin, roles: ROLE_ADMIN }
+
+        # Everything not listed above requires a login. Last rule wins only if nothing above
+        # matched -- Symfony stops at the FIRST match, so order here is load-bearing.
+        - { path: ^/, roles: ROLE_USER }
 
 when@test:
     security:
