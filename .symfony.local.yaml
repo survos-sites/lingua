@@ -1,4 +1,13 @@
 # .symfony.local.yaml
+http:
+    port: 8012  # hard-forces the port (not preferred_port, which falls back to random).
+                #
+                # 8010-8024 is the band reserved for hard-pinned ports. The Symfony CLI's
+                # dynamic pool starts at 8000 and climbs, and with ~44 registered projects
+                # it reaches well past 8006, where lingua happened to be landing -- i.e. a
+                # port the pool itself hands out, held only by start order. Neighbours:
+                # mediary 8010, harvest 8011, depot 8020, ssai 8021.
+
 workers:
 #   built-in command that starts messenger consumer
   messenger_consume_obj:
