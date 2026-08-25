@@ -1914,6 +1914,12 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     workflow_paths?: list<scalar|Param|null>,
  *     async_transport_dsn?: scalar|Param|null, // Default: "doctrine://default"
  *     queue_driver?: "doctrine"|"rabbitmq"|Param, // Default: "doctrine"
+ *     retry_strategy?: array{
+ *         max_retries?: int|Param, // Default: 3
+ *         delay?: int|Param, // Default: 1000
+ *         multiplier?: float|Param, // Default: 2
+ *         max_delay?: int|Param, // Default: 0
+ *     },
  * }
  * @psalm-type SurvosJsTwigConfig = array{
  *     debug?: bool|Param, // Default: false

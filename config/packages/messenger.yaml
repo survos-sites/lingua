@@ -14,6 +14,19 @@ framework:
              sync: 'sync://'
              async:
                dsn: '%env(MESSENGER_TRANSPORT_DSN_RABBITMQ)%/async'
+               options:
+                 delay:
+                   # No retry_strategy is set on this transport, which does NOT mean no
+                   # retries -- Symfony's default is max_retries: 3, so the first failure
+                   # here declares a delay queue. Without `durable: true`
+                   # jwage/phpamqplib-messenger declares it transient + non-exclusive, which
+                   # RabbitMQ 4.3 denies by default (`transient_nonexcl_queues`): the broker
+                   # answers INTERNAL_ERROR and CLOSES the connection, and because that
+                   # happens inside SendFailedMessageForRetryListener the worker EXITS rather
+                   # than retrying. One source 5xx then kills the worker for good. Opt-in flag
+                   # from jwage/phpamqplib-messenger#124 (merged 2026-08-25, untagged -- see
+                   # the dev-main constraint in composer.json).
+                   durable: true
 
              # NOTE: moving target.translate to AMQP orphans the ~62k TransitionMessages the
              # 2026-08-17 push left in Postgres — the worker now reads an AMQP queue that
