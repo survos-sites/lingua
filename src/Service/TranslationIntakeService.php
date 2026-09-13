@@ -414,9 +414,8 @@ final class TranslationIntakeService
             }
         }
 
-        // 6b) Start the announce chain. ONE message per batch, never one per target: the
-        // handler drains every subscriber in pages and re-schedules itself until nothing is
-        // pending, so a 15,000-target push produces a handful of webhooks rather than 15,000.
+        // Announce cached results for new subscribers. Future translations wake a drain
+        // after their own flush, even when processing takes longer than an hour.
         if ($subscribed > 0) {
             $this->bus->dispatch(new FlushTranslationNotificationsMessage());
         }

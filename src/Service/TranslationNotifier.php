@@ -136,12 +136,8 @@ final class TranslationNotifier
     }
 
     /**
-     * Manual drain, for when the automatic chain has ended.
-     *
-     * The chain in {@see \App\MessageHandler\FlushTranslationNotificationsMessageHandler} gives
-     * up after an hour of subscriptions that never finish translating, so this is the way back
-     * in once the translator is healthy again — and the first thing to run when a subscriber
-     * says it is missing translations lingua thinks it sent.
+     * Recovery drain for already-finished translations whose announcement was missed.
+     * New results normally wake the drain through TranslationCompletionNotifier after flush.
      */
     #[AsCommand('lingua:webhook:flush', 'Send translation.completed webhooks for translations not yet announced')]
     public function flushCommand(

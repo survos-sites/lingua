@@ -1,106 +1,23 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\MessageHandler;
 
-use App\Entity\TranslationSubscription;
 use App\Message\FlushTranslationNotificationsMessage;
 use App\Service\TranslationNotifier;
-use Doctrine\ORM\EntityManagerInterface;
-use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Messenger\Stamp\DelayStamp;
 
-/**
- * Drains finished translations into webhooks, then decides whether to run again.
- *
- * Three outcomes, and the choice between them is what keeps this from becoming either a flood
- * or a permanent poll:
- *
- *   a page came back FULL      → re-dispatch immediately. More is ready this instant; waiting
- *                                would only add latency.
- *   nothing sent, but rows are
- *   still WAITING to translate → re-dispatch after a delay. The translator worker is mid-batch;
- *                                this is the case that would otherwise need a cron.
- *   nothing pending at all     → stop. The steady state is an empty queue, not a heartbeat.
- *
- * The attempt cap in {@see FlushTranslationNotificationsMessage} bounds the middle case.
- */
+/** Drain committed translations; future results wake this worker after their flush. */
 #[AsMessageHandler]
-final class FlushTranslationNotificationsMessageHandler
+final readonly class FlushTranslationNotificationsMessageHandler
 {
-    /** ~1 hour at RETRY_DELAY_MS. Past that, assume the translator is not coming back. */
-    private const int MAX_ATTEMPTS = 120;
-
-    private const int RETRY_DELAY_MS = 30_000;
-
-    public function __construct(
-        private readonly TranslationNotifier $notifier,
-        private readonly EntityManagerInterface $em,
-        private readonly MessageBusInterface $bus,
-        private readonly LoggerInterface $logger,
-    ) {
-    }
+    public function __construct(private TranslationNotifier $notifier, private MessageBusInterface $bus) {}
 
     public function __invoke(FlushTranslationNotificationsMessage $message): void
     {
-        $result = $this->notifier->flushAll();
-
-        if ($result['full']) {
-            // Attempt is NOT incremented: the cap exists to bound waiting, and this branch is
-            // making progress. Counting real work against the budget would cut a large backlog
-            // off part-way through.
-            $this->bus->dispatch(new FlushTranslationNotificationsMessage($message->attempt));
-
-            return;
+        if ($this->notifier->flushAll()['full']) {
+            $this->bus->dispatch(new FlushTranslationNotificationsMessage());
         }
-
-        if (!$this->awaitingTranslation()) {
-            if ($result['queued'] > 0) {
-                $this->logger->info('translation flush complete: {count} translations in {queued} webhook(s)', [
-                    'count' => $result['translations'],
-                    'queued' => $result['queued'],
-                ]);
-            }
-
-            return;
-        }
-
-        if ($message->attempt >= self::MAX_ATTEMPTS) {
-            $this->logger->warning(
-                'translation flush giving up after {attempts} attempts with subscriptions still untranslated. '
-                . 'Run `bin/console lingua:webhook:flush` once the translator is healthy.',
-                ['attempts' => $message->attempt],
-            );
-
-            return;
-        }
-
-        $this->bus->dispatch(
-            new FlushTranslationNotificationsMessage($message->attempt + 1),
-            [new DelayStamp(self::RETRY_DELAY_MS)],
-        );
-    }
-
-    /**
-     * Subscriptions whose target has not finished translating yet.
-     *
-     * Stop at the first match: a quiet pass only needs to know whether to come back,
-     * not count the entire historical subscription backlog.
-     */
-    private function awaitingTranslation(): bool
-    {
-        return $this->em->createQueryBuilder()
-            ->select('s.id')
-            ->from(TranslationSubscription::class, 's')
-            ->join('s.target', 't')
-            ->andWhere('s.notifiedAt IS NULL')
-            ->andWhere('t.marking NOT IN (:done)')
-            ->setParameter('done', \App\Workflow\TargetWorkflowInterface::TRANSLATED_PLACES)
-            ->setMaxResults(1)
-            ->getQuery()
-            ->getOneOrNullResult() !== null;
     }
 }
