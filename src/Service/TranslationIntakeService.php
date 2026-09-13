@@ -63,6 +63,7 @@ final class TranslationIntakeService
         private readonly NormalizerInterface    $normalizer,
         private readonly LoggerInterface        $logger,
         private readonly AsyncQueueLocator      $asyncQueueLocator,
+        private readonly TranslationEngineSelector $engineSelector,
     ) {}
 
     /**
@@ -81,7 +82,6 @@ final class TranslationIntakeService
     public function handle(BatchRequest $payload): array
     {
         $fromRaw   = trim((string) $payload->source);
-        $engineRaw = trim((string) ($payload->engine ?? 'libre'));
 
         $toLocalesRaw = array_values(array_filter(array_map(
             static fn($v) => trim((string) $v),
@@ -117,7 +117,7 @@ final class TranslationIntakeService
 
         // Normalize inputs once
         $from      = HashUtil::normalizeLocale($fromRaw);
-        $engine    = HashUtil::normalizeEngine($engineRaw);
+        $engine    = $this->engineSelector->select($from, $payload->engine);
         $toLocales = array_values(array_unique(array_map([HashUtil::class, 'normalizeLocale'], $toLocalesRaw)));
 
         // Remove degenerate targets
