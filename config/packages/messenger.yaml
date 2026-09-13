@@ -38,7 +38,10 @@ framework:
              # Also stays on Doctrine: low volume (one message per page of 500 translations),
              # and being able to see a stuck delivery as a row is worth more here than the
              # throughput AMQP would add.
-             # Outbound translation.completed delivery, plus the flush that produces it.
+             # Keep notification scans separate from outbound HTTP delivery.
+             translation_notifications:
+               dsn: 'doctrine://default?queue_name=translation_notifications'
+             # Outbound translation.completed delivery.
              # Its own transport because it is the only work here that depends on someone
              # else's uptime, so it is the only queue that will sit in retry — and a
              # subscriber being down must not stop `target.translate` from draining.
@@ -56,10 +59,7 @@ framework:
         routing:
             # Route your messages to the transports
 #             'Survos\StateBundle\Message\TransitionMessage': async
-            # The coalescing drain. Shares the webhook transport with the deliveries it
-            # produces so that "pause announcements" is one `messenger:stop-workers`-scoped
-            # decision rather than two.
-            'App\Message\FlushTranslationNotificationsMessage': webhook
+            'App\Message\FlushTranslationNotificationsMessage': translation_notifications
             'Symfony\Component\Webhook\Messenger\SendWebhookMessage': webhook
             # Batched translation. Shares target.translate with the per-Target
             # TransitionMessage path so ONE worker drains both — which matters right now,

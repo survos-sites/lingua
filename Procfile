@@ -14,3 +14,4 @@ web: frankenphp run --config /etc/caddy/Caddyfile
 # one. A translate worker holds no per-message state worth clearing that often.
 translator: php bin/console messenger:consume target.translate --fetch-size=8 --no-reset=100 --time-limit=3600 --memory-limit=512M
 webhook: php bin/console messenger:consume webhook --time-limit=3600 --memory-limit=256M
+notifications: php bin/console messenger:consume translation_notifications --time-limit=3600 --memory-limit=256M
