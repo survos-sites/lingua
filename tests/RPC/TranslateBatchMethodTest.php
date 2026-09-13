@@ -87,6 +87,23 @@ final class TranslateBatchMethodTest extends WebTestCase
         self::assertSame(4, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM target'));
     }
 
+    public function testNumbersIncludingZeroCompleteWithSubscriptions(): void
+    {
+        $body = $this->call([
+            'source' => 'es',
+            'target' => ['en'],
+            'texts' => ['1973', '0'],
+            'refs' => ['year', 'zero'],
+            'callbackUrl' => 'https://example.org/webhook/lingua',
+        ]);
+        self::assertSame(0, $body['result']['queued']);
+        $rows = $this->em->getConnection()->fetchAllAssociative('SELECT s.text, t.target_text, t.marking, sub.client_ref FROM source s JOIN target t ON t.source_id=s.id JOIN translation_subscription sub ON sub.target_key=t.key ORDER BY s.text');
+        self::assertSame([
+            ['text' => '0', 'target_text' => '0', 'marking' => WF::PLACE_IDENTICAL, 'client_ref' => 'zero'],
+            ['text' => '1973', 'target_text' => '1973', 'marking' => WF::PLACE_IDENTICAL, 'client_ref' => 'year'],
+        ], $rows);
+    }
+
     /**
      * A non-English source dispatches ONLY the hub leg; the spokes are dispatched later by
      * TranslateBatchMessageHandler, once the English text they read actually exists.

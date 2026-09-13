@@ -91,7 +91,7 @@ final class TranslationIntakeService
         $rawTexts = array_values(array_filter(array_map(
             static fn($v) => trim((string) $v),
             (array) $payload->texts
-        )));
+        ), static fn(string $text): bool => $text !== ''));
 
         // Caller's own key per text, joined on the TRIMMED TEXT rather than on position.
         // $rawTexts above is filtered and reindexed, so index i of it is not index i of
@@ -151,12 +151,6 @@ final class TranslationIntakeService
 
         foreach ($rawTexts as $s) {
             if ($s === '') { continue; }
-
-            // Optional rule: skip pure numbers (keep if you truly want this)
-            if (\preg_match('/^\d+$/', $s)) {
-                $skipped++;
-                continue;
-            }
 
             $h = HashUtil::calcSourceKey($s, $from);
             $byHash[$h] ??= $s;
@@ -269,18 +263,28 @@ final class TranslationIntakeService
                 $tuple = $source->getId().'|'.$loc.'|'.$engine;
 
                 $t = $targetByTuple[$tuple] ?? null;
+                $isNew = $t === null;
                 if (!$t) {
                     $t = new Target($source, $loc, $engine);
                     $this->em->persist($t);
                     $targetByTuple[$tuple] = $t;
+                    $createdTargets++;
+                }
 
+                // Numbers still need a completion callback, without an engine request.
+                if (preg_match('/^\d+$/D', $source->getText())) {
+                    $t->targetText = $source->getText();
+                    $t->setMarking(TargetWorkflowInterface::PLACE_IDENTICAL);
+                    continue;
+                }
+
+                if ($isNew) {
                     $toDispatch[$loc][] = $t->key;
                     $sourceIdByTargetKey[(string) $t->key] = $source->getId();
                     $charsByTargetKey[(string) $t->key] = mb_strlen((string) $source->getText());
                     if ($loc === TranslateBatchMessage::HUB_LOCALE) {
                         $hubPendingSourceIds[$source->getId()] = true;
                     }
-                    $createdTargets++;
                     continue;
                 }
 
