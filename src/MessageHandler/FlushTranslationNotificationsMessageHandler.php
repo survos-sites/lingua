@@ -57,7 +57,7 @@ final class FlushTranslationNotificationsMessageHandler
             return;
         }
 
-        if ($this->awaitingTranslation() === 0) {
+        if (!$this->awaitingTranslation()) {
             if ($result['queued'] > 0) {
                 $this->logger->info('translation flush complete: {count} translations in {queued} webhook(s)', [
                     'count' => $result['translations'],
@@ -87,19 +87,20 @@ final class FlushTranslationNotificationsMessageHandler
     /**
      * Subscriptions whose target has not finished translating yet.
      *
-     * A COUNT, not a fetch: this runs on every quiet pass and only ever asks "is there any
-     * reason to come back?".
+     * Stop at the first match: a quiet pass only needs to know whether to come back,
+     * not count the entire historical subscription backlog.
      */
-    private function awaitingTranslation(): int
+    private function awaitingTranslation(): bool
     {
-        return (int) $this->em->createQueryBuilder()
-            ->select('COUNT(s.id)')
+        return $this->em->createQueryBuilder()
+            ->select('s.id')
             ->from(TranslationSubscription::class, 's')
             ->join('s.target', 't')
             ->andWhere('s.notifiedAt IS NULL')
             ->andWhere('t.marking NOT IN (:done)')
             ->setParameter('done', \App\Workflow\TargetWorkflowInterface::TRANSLATED_PLACES)
+            ->setMaxResults(1)
             ->getQuery()
-            ->getSingleScalarResult();
+            ->getOneOrNullResult() !== null;
     }
 }
