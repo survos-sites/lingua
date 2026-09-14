@@ -19,7 +19,7 @@ use Survos\FieldBundle\Attribute\Field;
  * deduplicated by a hash of the text — so when two apps ask lingua to translate "Untitled"
  * into Spanish, they get the SAME Target row. Hanging `callbackUrl` off Target would therefore
  * mean the second app to push silently steals the first app's notifications. That is not a
- * scaling concern to revisit later; with zm, bts, harvest and openfoto all pushing overlapping
+ * scaling concern to revisit later; with zm, bts, harvest and fotostory all pushing overlapping
  * UI strings it is the normal case on day one.
  *
  * The subscription is the per-client fact. Target stays the per-string fact.

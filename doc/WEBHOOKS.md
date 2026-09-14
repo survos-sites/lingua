@@ -51,7 +51,7 @@ app that sets that env var gets webhooks without changing any calling code.
 A `Target` is `(source, targetLocale, engine)` and `Source` is deduplicated by a hash of the
 text — so when two apps ask for "Untitled" in Spanish they get the **same** `Target` row.
 Hanging `callbackUrl` off `Target` would mean the second app to push silently steals the first
-app's notifications. With zm, bts, harvest and openfoto all pushing overlapping UI strings that
+app's notifications. With zm, bts, harvest and fotostory all pushing overlapping UI strings that
 is the normal case, not an edge case. Hence `translation_subscription`, unique on
 `(target, callback_url)`.
 

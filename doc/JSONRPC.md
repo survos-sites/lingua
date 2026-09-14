@@ -156,7 +156,7 @@ not something to expect from this bundle.
 
 There was a point where the exchange felt slow enough that an app was pointed straight at
 lingua's database and queried by hash. **Verified gone as of 2026-08-16**: no second Doctrine
-connection or `LINGUA_DATABASE_*` env var in zm, harvest, bts or openfoto, and nothing in
+connection or `LINGUA_DATABASE_*` env var in zm, harvest, bts or fotostory, and nothing in
 lingua-bundle or lingua-core opens a connection — `LinguaPullBabelCommand` goes through
 `LinguaClient::pullBabelByHashes()` over HTTP like everything else.
 
