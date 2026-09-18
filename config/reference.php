@@ -1297,10 +1297,9 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     inflector?: scalar|Param|null, // Specify an inflector to use. // Default: "api_platform.metadata.inflector"
  *     validator?: array{
  *         serialize_payload_fields?: mixed, // Set to null to serialize all payload fields when a validation error is thrown, or set the fields you want to include explicitly. // Default: []
- *         query_parameter_validation?: bool|Param, // Deprecated: Will be removed in API Platform 5.0. // Default: true
  *     },
  *     jsonapi?: array{
- *         use_iri_as_id?: bool|Param|null, // Set to false to use entity identifiers instead of IRIs as the "id" field in JSON:API responses. Defaults to true; this default will change to false in API Platform 5.0. // Default: null
+ *         use_iri_as_id?: bool|Param, // Set to true to use IRIs instead of entity identifiers as the "id" field in JSON:API responses. Defaults to false, which uses the entity identifier and exposes the IRI as "links.self". // Default: false
  *         allow_client_generated_id?: bool|Param, // Allow client-generated IDs on JSON:API POST per https://jsonapi.org/format/#crud-creating-client-ids. Off by default to prevent id spoofing on public endpoints. // Default: false
  *     },
  *     eager_loading?: bool|array{
@@ -1320,7 +1319,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     enable_head_request_optimization?: bool|Param, // Skip response body construction on HEAD requests so collections are not iterated. Disable to process HEAD identically to GET. // Default: true
  *     enable_profiler?: bool|Param, // Enable the data collector and the WebProfilerBundle integration. // Default: true
  *     enable_phpdoc_parser?: bool|Param, // Enable resource metadata collector using PHPStan PhpDocParser. // Default: true
- *     enable_link_security?: bool|Param, // Deprecated: This option is always enabled and will be removed in API Platform 5.0. // Enable security for Links (sub resources). // Default: true
  *     collection?: array{
  *         exists_parameter_name?: scalar|Param|null, // The name of the query parameter to filter on nullable field values. // Default: "exists"
  *         order?: scalar|Param|null, // The default order of results. // Default: "ASC"
@@ -1338,7 +1336,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         imports?: list<scalar|Param|null>,
  *         paths?: list<scalar|Param|null>,
  *     },
- *     resource_class_directories?: list<scalar|Param|null>,
  *     serializer?: array{
  *         hydra_prefix?: bool|Param, // Use the "hydra:" prefix. // Default: false
  *     },
@@ -1370,9 +1367,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *             enabled?: bool|Param, // Default: true
  *         },
  *         max_query_depth?: int|Param, // Default: 20
- *         graphql_playground?: bool|array{ // Deprecated: The "graphql_playground" configuration is deprecated and will be ignored.
- *             enabled?: bool|Param, // Default: false
- *         },
  *         max_query_complexity?: int|Param, // Default: 500
  *         nesting_separator?: scalar|Param|null, // The separator to use to filter nested fields. // Default: "_"
  *         collection?: array{
@@ -1399,15 +1393,11 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         public?: bool|Param|null, // To make all responses public by default. // Default: null
  *         invalidation?: bool|array{ // Enable the tags-based cache invalidation system.
  *             enabled?: bool|Param, // Default: false
- *             varnish_urls?: list<scalar|Param|null>,
  *             urls?: list<scalar|Param|null>,
  *             scoped_clients?: list<scalar|Param|null>,
  *             max_header_length?: int|Param, // Max header length supported by the cache server. // Default: 7500
  *             request_options?: mixed, // To pass options to the client charged with the request. // Default: []
  *             purger?: scalar|Param|null, // Specify a purger to use (available values: "api_platform.http_cache.purger.varnish.ban", "api_platform.http_cache.purger.varnish.xkey", "api_platform.http_cache.purger.souin"). // Default: "api_platform.http_cache.purger.varnish"
- *             xkey?: array{ // Deprecated: The "xkey" configuration is deprecated, use your own purger to customize surrogate keys or the appropriate parameters.
- *                 glue?: scalar|Param|null, // xkey glue between keys // Default: " "
- *             },
  *         },
  *     },
  *     mercure?: bool|array{
@@ -1563,6 +1553,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *             cast_fn?: mixed,
  *             default?: mixed,
  *             filter_class?: mixed,
+ *             operations?: mixed,
  *             ...<string, mixed>
  *         }>,
  *         strict_query_parameter_validation?: mixed,
@@ -1581,6 +1572,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         serialize?: mixed,
  *         content_negotiation?: mixed,
  *         priority?: mixed,
+ *         route_priority?: mixed,
  *         name?: mixed,
  *         allow_create?: mixed,
  *         item_uri_template?: mixed,
@@ -1589,7 +1581,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     ...<string, mixed>
  * }
  * @psalm-type TwigComponentConfig = array{
- *     defaults?: array<string, Param|string|array{ // Default: ["__deprecated__use_old_naming_behavior"]
+ *     defaults?: array<string, Param|string|array{ // Default: []
  *         template_directory?: scalar|Param|null, // Default: "components"
  *         name_prefix?: scalar|Param|null, // Default: ""
  *     }>,
@@ -1598,7 +1590,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         enabled?: bool|Param, // Default: "%kernel.debug%"
  *         collect_components?: bool|Param, // Collect components instances // Default: true
  *     },
- *     controllers_json?: scalar|Param|null, // Deprecated: The "twig_component.controllers_json" config option is deprecated, and will be removed in 3.0. // Default: null
  * }
  * @psalm-type SurvosCoreConfig = array{
  *     enabled?: bool|Param, // Default: true
@@ -2021,6 +2012,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         logo_small?: scalar|Param|null, // Default: null
  *         homepage_route?: scalar|Param|null, // Default: null
  *         homepage_url?: scalar|Param|null, // Default: null
+ *         tunnel_host?: scalar|Param|null, // Default: "%env(default::TUNNEL_HOST)%"
+ *         local_host?: scalar|Param|null, // Default: "%env(default::APP_BASE_URL)%"
  *         links?: array{
  *             github?: scalar|Param|null, // Default: null
  *             docs?: scalar|Param|null, // Default: null
@@ -2036,6 +2029,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         },
  *         header?: array{
  *             locale_switcher?: bool|Param, // Default: true
+ *             layout?: "stacked"|"compact"|Param, // stacked: NAVBAR_MENU gets its own row under the brand. compact: brand, every nav slot and the right-hand tools share one row. // Default: "stacked"
  *             container?: scalar|Param|null, // Default: "container-fluid"
  *             auth?: array{
  *                 enabled?: bool|Param, // Default: true
@@ -2050,6 +2044,13 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *             },
  *         },
  *     },
+ *     favicon?: array{
+ *         enabled?: bool|Param, // Serve a dynamic SVG favicon at /favicon.svg so apps get a useful icon without a favicon-generator workflow. // Default: true
+ *         text?: scalar|Param|null, // 1-2 characters shown on the icon. Defaults to initials derived from app.code. // Default: null
+ *         background?: scalar|Param|null, // Background fill, e.g. a distinct color per environment (prod/wip/dev/test). // Default: "#206bc4"
+ *         foreground?: scalar|Param|null, // Text color. // Default: "#ffffff"
+ *         shape?: "square"|"rounded"|"circle"|Param, // Default: "rounded"
+ *     },
  *     routes?: array{
  *         home?: scalar|Param|null, // Default: "app_homepage"
  *         login?: scalar|Param|null, // Default: null
@@ -2061,6 +2062,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     },
  *     debug?: array{
  *         menu_slots?: bool|Param, // Default: false
+ *         admin_toolbar?: bool|Param, // Render the orange admin menu toolbar (navbar_admin) for admins/debug. Defaults to the TABLER_ADMIN_TOOLBAR env var (1); developers can set TABLER_ADMIN_TOOLBAR=0 in .env.local to hide it. // Default: "%env(bool:TABLER_ADMIN_TOOLBAR)%"
  *     },
  *     options?: array{
  *         theme?: scalar|Param|null, // Default: "tabler"
@@ -2070,6 +2072,9 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     },
  *     menu_options?: array<string, scalar|Param|null>,
  *     impersonate?: array<string, scalar|Param|null>,
+ *     routes_enabled?: bool|Param, // Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off. // Default: true
+ *     route_prefix?: scalar|Param|null, // URL prefix applied to all routes from this bundle. // Default: ""
+ *     locale_prefix?: bool|Param, // Prepend {_locale} (constrained to kernel.enabled_locales) to this bundle's route prefix, e.g. /{_locale}/f instead of /f -- for bundles whose routes are meant to be shared/bookmarked, so the URL itself carries the locale instead of a query param. // Default: false
  * }
  * @psalm-type SurvosKitConfig = array{
  *     webhook?: array{
@@ -2169,6 +2174,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     production_url_base?: scalar|Param|null, // Default: null
  *     user_provider?: scalar|Param|null, // Default: null
  *     user_class?: scalar|Param|null, // Default: "App\\Entity\\User"
+ *     dev_auto_login?: scalar|Param|null, // User identifier (usually an email) to auto-authenticate as. Registers DevAutoLoginAuthenticator, which must then be listed in a when@dev firewall's custom_authenticators. Ignored entirely outside debug mode — there is no production code path. Point it at an env var so it can be switched off without editing security.yaml. // Default: null
  * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,
