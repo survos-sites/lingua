@@ -98,6 +98,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    #[\Deprecated]
+    public function eraseCredentials(): void
+    {
+        // Required by Symfony 7.4's UserInterface; this entity stores no temporary credentials.
+    }
+
     /**
      * Ensure the session doesn't contain actual password hashes by CRC32C-hashing them, as supported since Symfony 7.3.
      */

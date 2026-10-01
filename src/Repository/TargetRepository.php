@@ -6,8 +6,8 @@ use App\Entity\Source;
 use App\Entity\Target;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
-use Survos\CoreBundle\Traits\QueryBuilderHelperInterface;
-use Survos\CoreBundle\Traits\QueryBuilderHelperTrait;
+use Survos\FieldBundle\Repository\QueryBuilderHelperInterface;
+use Survos\FieldBundle\Repository\QueryBuilderHelperTrait;
 
 /**
  * @extends ServiceEntityRepository<Target>

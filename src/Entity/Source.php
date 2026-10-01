@@ -107,7 +107,7 @@ class Source implements RouteParametersInterface, \Stringable
      */
     #[ORM\OneToMany(targetEntity: Target::class, mappedBy: 'source',
         orphanRemoval: true, cascade: ['persist'])]
-    #[ORM\OrderBy(['engine'=>'desc'])] // so bing will overwrite libre
+    #[ORM\OrderBy(['engine' => \SortDirection::Descending])] // so bing will overwrite libre
     #[Groups(['source.export'])]
     private Collection $targets;
 

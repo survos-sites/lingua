@@ -14,7 +14,6 @@ use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 
 final class AppMenu
 {
@@ -29,7 +28,6 @@ final class AppMenu
         protected readonly ?RouterInterface $router = null,
         protected readonly ?RouteAliasService $routeAliasService = null,
         protected readonly ?IconService $iconService = null,
-        private ?AuthorizationCheckerInterface $authorizationChecker = null,
     ) {
     }
 

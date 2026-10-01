@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
-use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\ExactFilter;
+use ApiPlatform\Metadata\QueryParameter;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -14,8 +14,9 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Survos\Lingua\Core\Identity\HashUtil;
 
-use Survos\CoreBundle\Entity\RouteParametersInterface;
-use Survos\CoreBundle\Entity\RouteParametersTrait;
+use Survos\FieldBundle\Entity\RouteParametersInterface;
+use Survos\FieldBundle\Entity\RouteIdentityTrait;
+use Survos\FieldBundle\Attribute\RouteIdentity;
 use Survos\FieldBundle\Attribute\EntityMeta;
 use Survos\FieldBundle\Attribute\Field;
 use Survos\FieldBundle\Enum\Widget;
@@ -31,13 +32,13 @@ use Symfony\Component\Serializer\Attribute\Groups;
 #[ORM\Index(name: 'target_source', fields: ['source'])]
 #[ORM\Index(name: 'target_marking', fields: ['marking'])]
 #[ORM\HasLifecycleCallbacks]
-#[ApiFilter(filterClass: SearchFilter::class, properties: [
-    'key'          => 'exact',
-    'targetLocale' => 'exact',
-    'marking'      => 'exact',
-    'engine'       => 'exact',
+#[RouteIdentity(field: 'key', key: 'targetId')]
+#[ApiResource(parameters: [
+    'key' => new QueryParameter(filter: new ExactFilter(), property: 'key'),
+    'targetLocale' => new QueryParameter(filter: new ExactFilter(), property: 'targetLocale'),
+    'marking' => new QueryParameter(filter: new ExactFilter(), property: 'marking'),
+    'engine' => new QueryParameter(filter: new ExactFilter(), property: 'engine'),
 ])]
-#[ApiResource]
 #[Get]
 #[GetCollection]
 #[EntityMeta(
@@ -50,9 +51,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 class Target implements RouteParametersInterface, MarkingInterface
 {
     use MarkingTrait;
-    use RouteParametersTrait;
-
-    public const UNIQUE_PARAMETERS = ['targetId' => 'key'];
+    use RouteIdentityTrait;
 
     public function __construct(
         #[ORM\ManyToOne(fetch: 'EXTRA_LAZY', inversedBy: 'targets')]
