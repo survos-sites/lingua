@@ -78,7 +78,10 @@ COPY . .
 #   while public/assets/ serves fine -- which is what makes it confusing.
 #
 #   memory_limit=-1 or the build OOMs.
-RUN composer dump-autoload --classmap-authoritative --no-dev --no-interaction \
+# DataTables constructs its token manager during cache warmup. Give only this
+# build step a secret; production receives its real APP_SECRET from Dokku.
+RUN export APP_SECRET="$(php -r 'echo bin2hex(random_bytes(32));')" \
+    && composer dump-autoload --classmap-authoritative --no-dev --no-interaction \
     && php -d memory_limit=-1 bin/console cache:clear --env=prod --no-debug \
     && php -d memory_limit=-1 bin/console assets:install public --env=prod \
     && php -d memory_limit=-1 bin/console importmap:install --env=prod \
