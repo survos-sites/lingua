@@ -45,4 +45,5 @@ return [
     KnpU\OAuth2ClientBundle\KnpUOAuth2ClientBundle::class => ['all' => true],
     Survos\AuthBundle\SurvosAuthBundle::class => ['all' => true],
     Pentiminax\UX\DataTables\PentiminaxDataTablesBundle::class => ['all' => true],
+    Survos\Grid\SurvosGridBundle::class => ['all' => true],
 ];
