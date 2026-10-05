@@ -1,11 +1,25 @@
 survos_translator:
   default_engine: libre
   engines:
-    libre:
+    libre: &libre
       type: libre
       base_uri: '%env(resolve:LIBRE_HOST)%'
       api_key: null
-    deepl:
+    deepl: &deepl
       type: deepl
       plan: free # sets  base_uri: 'https://api.deepl.com'
       api_key: '%env(resolve:DEEPL_API_KEY)%'
+
+when@dev:
+  parameters:
+    env(EURONANO_HOST): 'http://127.0.0.1:8884'
+  survos_translator:
+    # The bundle's HTTP-client prepend uses a shallow engines merge, so repeat
+    # existing engines by reference when adding a dev-only engine.
+    engines:
+      libre: *libre
+      deepl: *deepl
+      euronano:
+        type: libre
+        base_uri: '%env(resolve:EURONANO_HOST)%'
+        api_key: '%env(default::EURONANO_API_KEY)%'
