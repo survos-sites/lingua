@@ -69,8 +69,15 @@ bin/console doctrine:migrations:execute --up 'DoctrineMigrations\Version20261005
 bin/console messenger:setup-transports translation_results   # exchange + results queue + binding
 # the worker declares its own job queues + DLQs (ai-tools: --declare-only)
 
-bin/console messenger:consume translation_outbox translation_results translation_notifications webhook -vv
+# TWO processes: the AMQP results receiver blocks the worker loop and starves Doctrine
+# transports sharing its process (the outbox then never drains).
+bin/console messenger:consume translation_outbox translation_notifications webhook -vv
+bin/console messenger:consume translation_results -vv
 ```
+
+Real environment variables override `.env`. A shell launched for ANOTHER app (for example a dev3
+pane of a zm task, which exports zm's `DATABASE_URL`) would point these consumers at that
+app's database. In such a shell, start them with `env -i HOME="$HOME" PATH="$PATH" bin/console …`.
 
 Sample request:
 
