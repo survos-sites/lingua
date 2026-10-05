@@ -6,8 +6,10 @@ namespace App\MessageHandler;
 
 use App\Entity\Target;
 use App\Message\TranslateBatchMessage;
+use App\Message\TranslationWorker\TranslationJobRequest;
 use App\Repository\TargetRepository;
 use App\Service\TargetTranslationApplier;
+use App\Service\TranslationEngineCatalog;
 use App\Workflow\TargetWorkflowInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -16,6 +18,8 @@ use Survos\TranslatorBundle\Service\TranslatorManager;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\DependencyInjection\Attribute\Target as WorkflowTarget;
+use Symfony\Component\Workflow\WorkflowInterface;
 
 /**
  * One HTTP call per language pair, instead of one per string.
@@ -40,12 +44,20 @@ final class TranslateBatchMessageHandler
         private readonly EntityManagerInterface $em,
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
+        private readonly TranslationEngineCatalog $engineCatalog,
+        #[WorkflowTarget(TargetWorkflowInterface::WORKFLOW_NAME)] private readonly WorkflowInterface $targetWorkflow,
     ) {
     }
 
     public function __invoke(TranslateBatchMessage $message): void
     {
         if ($message->targetKeys === []) {
+            return;
+        }
+
+        if ($this->engineCatalog->isWorker($message->engine)) {
+            $this->dispatchToWorker($message);
+
             return;
         }
 
@@ -253,6 +265,57 @@ final class TranslateBatchMessageHandler
             'from' => $message->sourceLocale,
             'to' => $message->targetLocale,
             'locales' => implode(',', $message->thenLocales),
+        ]);
+    }
+
+    /**
+     * Worker profiles (dispatch: worker): the same batch, but the "engine call" is a publish and
+     * the answer arrives later, through the results consumer and TargetTranslationApplier like
+     * every other engine. `dispatch` (u → q) records that a job is out. request_id is the Target
+     * key, so the result maps straight back to its row.
+     *
+     * Every job is a direct source → locale request, so a hub batch's spokes are sent alongside
+     * it rather than waiting for an English that this path never stores first.
+     */
+    private function dispatchToWorker(TranslateBatchMessage $message): void
+    {
+        /** @var Target[] $targets */
+        $targets = $this->targetRepository->findBy(['key' => $message->targetKeys]);
+        foreach ($message->thenLocales as $spokeLocale) {
+            $keys = array_map(static fn (Target $t): string => Target::calcKey($t->source, $spokeLocale, $t->engine), array_filter($targets, static fn (Target $t): bool => $t->source !== null));
+            array_push($targets, ...$this->targetRepository->findBy(['key' => $keys]));
+        }
+
+        $dispatched = 0;
+        try {
+            foreach ($targets as $target) {
+                // t/i are done and q is in flight; can() is the whole idempotency check.
+                if ($this->targetWorkflow->can($target, TargetWorkflowInterface::TRANSITION_DISPATCH)) {
+                    // Routed to the send-only `translation_jobs` transport: mandatory + confirmed,
+                    // so a throw here means the broker did not take it and the batch retries.
+                    $this->bus->dispatch(new TranslationJobRequest(
+                        requestId: (string) $target->key,
+                        text: (string) $target->source?->getText(),
+                        sourceLocale: (string) $target->source?->locale,
+                        targetLocale: (string) $target->targetLocale,
+                        profile: $target->engine,
+                    ));
+                    $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_DISPATCH);
+                    $dispatched++;
+                }
+            }
+        } finally {
+            // Keep `q` for every job the broker confirmed, even if a later publish failed and
+            // Messenger retries this batch.
+            $this->em->flush();
+        }
+
+        $this->logger->info('worker batch [{from}->{to}] {dispatched}/{requested} via {engine}', [
+            'from' => $message->sourceLocale,
+            'to' => $message->targetLocale,
+            'dispatched' => $dispatched,
+            'requested' => \count($targets),
+            'engine' => $message->engine,
         ]);
     }
 }

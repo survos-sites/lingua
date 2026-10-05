@@ -23,7 +23,12 @@ class TargetWorkflowInterface
     const PLACE_TRANSLATED='t';
     #[Place(info: 'identical', description: "source exists elsewhere?")]
     const PLACE_IDENTICAL='i';
-    const PLACES = [self::PLACE_UNTRANSLATED, self::PLACE_TRANSLATED, self::PLACE_IDENTICAL];
+
+    // Sent to a queue worker profile (dispatch: worker), result not back yet. Never used by the
+    // HTTP engines, which go straight from u to t/i.
+    #[Place(info: 'queued', description: 'job published to a translation worker, awaiting its result')]
+    const PLACE_QUEUED='q';
+    const PLACES = [self::PLACE_UNTRANSLATED, self::PLACE_TRANSLATED, self::PLACE_IDENTICAL, self::PLACE_QUEUED];
 
     /**
      * Places that mean "there is a result to hand back".
@@ -37,4 +42,11 @@ class TargetWorkflowInterface
 
     #[Transition([self::PLACE_UNTRANSLATED], self::PLACE_TRANSLATED, async: true)]
     public const TRANSITION_TRANSLATE = 'translate';
+
+    /**
+     * Worker profiles only: TranslateBatchMessageHandler published the job instead of calling an
+     * engine in-process. The result lands via TargetTranslationApplier like every other engine.
+     */
+    #[Transition([self::PLACE_UNTRANSLATED], self::PLACE_QUEUED)]
+    public const TRANSITION_DISPATCH = 'dispatch';
 }

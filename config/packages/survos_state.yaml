@@ -38,6 +38,13 @@ survos_state:
 # placeholder fails validation before it can be resolved ("The value "" is not allowed ...
 # Permissible values: doctrine, rabbitmq"). async_transport_dsn IS env-driven, because that one
 # is passed through as an opaque DSN string and resolved later.
+# Local dev runs the per-transition transports on Doctrine (inspectable rows; the local podman
+# broker has no `lingua` vhost). Production stays on RabbitMQ.
+when@dev:
+    survos_state:
+        queue_driver: doctrine
+        async_transport_dsn: '%env(DOCTRINE_MESSENGER_TRANSPORT_DSN)%'
+
 when@test:
     survos_state:
         queue_driver: doctrine

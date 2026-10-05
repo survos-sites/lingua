@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Entity\Target;
-use App\Entity\TranslationJob;
+use App\Message\TranslateBatchMessage;
 use App\Message\TranslationWorker\MalformedTranslationResultMessage;
-use App\Message\TranslationWorker\PublishTranslationJobMessage;
 use App\Message\TranslationWorker\TranslationResultMessage;
-use App\MessageHandler\PublishTranslationJobMessageHandler;
+use App\MessageHandler\TranslateBatchMessageHandler;
 use App\MessageHandler\TranslationResultMessageHandler;
 use App\Messenger\TranslationResultJsonSerializer;
 use App\Service\TranslationIntakeService;
@@ -19,15 +18,17 @@ use App\Workflow\TargetWorkflowInterface as WF;
 use Doctrine\ORM\EntityManagerInterface;
 use Survos\Lingua\Contracts\Dto\BatchRequest;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
-use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
- * Native worker path: intake → TranslationJob + outbox → plain-JSON publish → result consumer.
+ * Worker profiles ride the existing batch path: intake → TranslateBatchMessage →
+ * TranslateBatchMessageHandler publishes each job and applies `dispatch` (u → q) → the result
+ * consumer applies the answer via TargetTranslationApplier.
  *
- * Runs against lingua_test. The outbox is in-memory here and the broker is replaced by
- * RecordingTranslationJobPublisher, so nothing touches RabbitMQ; the wire bodies asserted are
- * the exact bytes the real publisher sends.
+ * Runs against lingua_test. The broker is replaced by RecordingTranslationJobPublisher, so
+ * nothing touches RabbitMQ; the bodies asserted are the exact bytes the real publisher sends.
  */
 final class TranslationWorkerTest extends KernelTestCase
 {
@@ -39,23 +40,22 @@ final class TranslationWorkerTest extends KernelTestCase
     private EntityManagerInterface $em;
     private TranslationIntakeService $intake;
     private RecordingTranslationJobPublisher $publisher;
-    private InMemoryTransport $outbox;
 
     protected function setUp(): void
     {
         self::bootKernel();
         $container = self::getContainer();
         $this->em = $container->get(EntityManagerInterface::class);
-        $this->em->getConnection()->executeStatement('TRUNCATE translation_job, translation_subscription, target, source RESTART IDENTITY CASCADE');
-        $this->em->getConnection()->executeStatement("DELETE FROM messenger_messages WHERE queue_name = 'translation_notifications'");
+        $this->em->getConnection()->executeStatement('TRUNCATE translation_subscription, target, source RESTART IDENTITY CASCADE');
+        $this->em->getConnection()->executeStatement("DELETE FROM messenger_messages WHERE queue_name IN ('translation_notifications', 'target.translate')");
         $this->intake = $container->get(TranslationIntakeService::class);
         $this->publisher = $container->get(TranslationJobPublisherInterface::class);
-        $this->outbox = $container->get('messenger.transport.translation_outbox');
     }
 
+    /** Push through the real intake, then run the batches it queued, as the worker would. */
     private function push(string $text = 'Bonjour le monde.', bool $force = false, string $source = 'fr', string $target = 'en'): array
     {
-        return $this->intake->handle(new BatchRequest(
+        $response = $this->intake->handle(new BatchRequest(
             source: $source,
             target: [$target],
             texts: [$text],
@@ -64,25 +64,18 @@ final class TranslationWorkerTest extends KernelTestCase
             callbackUrl: self::CALLBACK,
             refs: ['ref-1'],
         ));
-    }
 
-    /** Drain the in-memory outbox through the real publish handler. */
-    private function publishOutbox(): void
-    {
-        $handler = self::getContainer()->get(PublishTranslationJobMessageHandler::class);
-        foreach ($this->outbox->get() as $envelope) {
-            $handler($envelope->getMessage());
-            $this->outbox->ack($envelope);
+        $transport = self::getContainer()->get('messenger.transport.target.translate');
+        $handler = self::getContainer()->get(TranslateBatchMessageHandler::class);
+        foreach ($transport->get() as $envelope) {
+            $message = $envelope->getMessage();
+            $transport->ack($envelope);
+            if ($message instanceof TranslateBatchMessage) {
+                $handler($message);
+            }
         }
-    }
 
-    private function onlyJob(): TranslationJob
-    {
-        $this->em->clear();
-        $jobs = $this->em->getRepository(TranslationJob::class)->findAll();
-        self::assertCount(1, $jobs);
-
-        return $jobs[0];
+        return $response;
     }
 
     private function target(): Target
@@ -95,15 +88,16 @@ final class TranslationWorkerTest extends KernelTestCase
     }
 
     /** A worker result exactly as FastStream publishes it, decoded by the real wire serializer. */
-    private function workerResult(TranslationJob $job, array $override = []): TranslationResultMessage|MalformedTranslationResultMessage
+    private function workerResult(array $override = []): TranslationResultMessage|MalformedTranslationResultMessage
     {
+        $target = $this->target();
         $body = array_replace([
             'schema_version' => 1,
             'type' => 'translation.result',
-            'request_id' => $job->requestId,
-            'profile' => $job->profile,
-            'source_locale' => $job->sourceLocale,
-            'target_locale' => $job->targetLocale,
+            'request_id' => $target->key,
+            'profile' => $target->engine,
+            'source_locale' => $target->source->locale,
+            'target_locale' => $target->targetLocale,
             'status' => 'completed',
             'translated_text' => 'Hello world.',
             'provenance' => ['model' => self::MODEL, 'revision' => self::REVISION, 'variant' => 'tiny', 'runtime' => 'bergamot', 'quantization' => 'intgemm', 'beam_size' => 1],
@@ -120,90 +114,82 @@ final class TranslationWorkerTest extends KernelTestCase
         $message instanceof MalformedTranslationResultMessage ? $handler->malformed($message) : $handler->result($message);
     }
 
+    private function expectRejected(object $message, string $contains): void
+    {
+        try {
+            $this->handle($message);
+            self::fail('Expected the result to be rejected into the failed transport.');
+        } catch (UnrecoverableMessageHandlingException $e) {
+            self::assertStringContainsString($contains, $e->getMessage());
+        }
+    }
+
     private function pendingNotifications(): int
     {
         return (int) $this->em->getConnection()->fetchOne("SELECT count(*) FROM messenger_messages WHERE queue_name = 'translation_notifications'");
     }
 
-    public function testCacheMissPersistsJobAndPublishesContractJsonToProfileRoute(): void
+    public function testCacheMissQueuesTargetAndPublishesContractJsonToProfileRoute(): void
     {
-        $response = $this->push();
+        self::assertSame(1, $this->push()['queued']);
 
-        self::assertSame(1, $response['jobs']['queued']);
-        self::assertSame(1, $response['queued']);
-        $job = $this->onlyJob();
-        self::assertSame(TranslationJob::STATUS_PENDING, $job->status);
-        self::assertSame('Bonjour le monde.', $job->inputText);
-        self::assertCount(1, $this->outbox->getSent());
-        self::assertInstanceOf(PublishTranslationJobMessage::class, $this->outbox->getSent()[0]->getMessage());
-
-        $this->publishOutbox();
-
+        $target = $this->target();
+        self::assertSame(WF::PLACE_QUEUED, $target->getMarking());
         self::assertCount(1, $this->publisher->published);
-        self::assertSame('euronano-tiny-v1.to-en', $this->publisher->published[0]['routingKey']);
-        self::assertSame($job->requestId, $this->publisher->published[0]['messageId']);
-        self::assertSame('translation.request', $this->publisher->published[0]['type']);
+        $published = $this->publisher->published[0];
+        self::assertSame('euronano-tiny-v1.to-en', $published['routingKey']);
+        self::assertSame($target->key, $published['messageId']);
+        self::assertSame('translation.request', $published['type']);
         self::assertSame([
             'schema_version' => 1,
             'type' => 'translation.request',
-            'request_id' => $job->requestId,
+            'request_id' => $target->key,
             'text' => 'Bonjour le monde.',
             'source_locale' => 'fr',
             'target_locale' => 'en',
             'profile' => self::PROFILE,
-        ], json_decode($this->publisher->published[0]['body'], true, flags: \JSON_THROW_ON_ERROR));
-        self::assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $job->requestId);
-        self::assertSame(TranslationJob::STATUS_DISPATCHED, $this->onlyJob()->status);
+        ], json_decode($published['body'], true, flags: \JSON_THROW_ON_ERROR));
+        self::assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $target->key, 'request_id is the Target key the worker validates');
     }
 
-    public function testTranslationMemoryHitDispatchesNothing(): void
+    public function testTranslationMemoryHitPublishesNothing(): void
     {
         $this->push();
-        $this->handle($this->workerResult($this->onlyJob()));
-        $this->outbox->reset();
+        $this->handle($this->workerResult());
+        $this->publisher->published = [];
 
-        $response = $this->push();
-
-        self::assertSame(['queued' => 0, 'hits' => 1, 'inFlight' => 0, 'superseded' => 0], $response['jobs']);
-        self::assertSame([], $this->outbox->getSent());
-        self::assertCount(1, $this->em->getRepository(TranslationJob::class)->findAll());
+        self::assertSame(0, $this->push()['queued']);
+        self::assertSame([], $this->publisher->published);
     }
 
-    public function testRepushWhileInFlightDoesNotDuplicateWork(): void
+    public function testRepushWhileQueuedDoesNotPublishAgain(): void
     {
         $this->push();
-        $this->outbox->reset();
+        $this->publisher->published = [];
 
-        $response = $this->push();
+        $this->push();
 
-        self::assertSame(['queued' => 0, 'hits' => 0, 'inFlight' => 1, 'superseded' => 0], $response['jobs']);
-        self::assertSame([], $this->outbox->getSent());
+        self::assertSame([], $this->publisher->published);
+        self::assertSame(WF::PLACE_QUEUED, $this->target()->getMarking());
     }
 
     public function testCompletedResultPersistsProvenanceAndSchedulesCallback(): void
     {
         $this->push();
-        $job = $this->onlyJob();
         $before = $this->pendingNotifications();
 
-        $this->handle($this->workerResult($job));
+        $this->handle($this->workerResult());
 
         $target = $this->target();
         self::assertSame(WF::PLACE_TRANSLATED, $target->getMarking());
         self::assertSame('Hello world.', $target->targetText);
-        self::assertNull($target->pivotLocale);
         self::assertSame(self::PROFILE, $target->provenance['engine']);
         self::assertSame('ai-tools', $target->provenance['provider']);
         self::assertSame(self::MODEL, $target->provenance['model']);
         self::assertSame(self::REVISION, $target->provenance['revision']);
         self::assertSame('tiny', $target->provenance['variant']);
         self::assertSame('bergamot', $target->provenance['runtime']);
-        self::assertSame($job->requestId, $target->provenance['request_id']);
-
-        $job = $this->onlyJob();
-        self::assertSame(TranslationJob::STATUS_COMPLETED, $job->status);
-        self::assertSame('translated', $job->outcome);
-        self::assertSame(12.3, $job->metrics['elapsed_ms']);
+        self::assertSame(1, $target->provenance['beam_size']);
         self::assertSame($before + 1, $this->pendingNotifications(), 'the existing callback drain is scheduled');
     }
 
@@ -211,103 +197,71 @@ final class TranslationWorkerTest extends KernelTestCase
     {
         $this->push('Paris');
         $before = $this->pendingNotifications();
-        $this->handle($this->workerResult($this->onlyJob(), ['translated_text' => 'Paris']));
+
+        $this->handle($this->workerResult(['translated_text' => 'Paris']));
 
         self::assertSame(WF::PLACE_IDENTICAL, $this->target()->getMarking());
-        self::assertSame('identical', $this->onlyJob()->outcome);
         self::assertSame($before + 1, $this->pendingNotifications());
     }
 
     public function testDuplicateResultIsIdempotent(): void
     {
         $this->push();
-        $job = $this->onlyJob();
-        $this->handle($this->workerResult($job));
-        $this->handle($this->workerResult($job, ['translated_text' => 'Something else.']));
+        $this->handle($this->workerResult());
+        $before = $this->pendingNotifications();
+
+        $this->handle($this->workerResult(['translated_text' => 'Something else.']));
 
         self::assertSame('Hello world.', $this->target()->targetText);
-        self::assertSame(1, $this->onlyJob()->duplicateResults);
-    }
-
-    public function testStaleResultFromSupersededJobIsRecordedButNotApplied(): void
-    {
-        $this->push();
-        $old = $this->onlyJob();
-
-        $response = $this->push(force: true);
-        self::assertSame(1, $response['jobs']['superseded']);
-        $before = $this->pendingNotifications();
-
-        $this->handle($this->workerResult($old, ['translated_text' => 'Old answer.']));
-        self::assertSame(WF::PLACE_UNTRANSLATED, $this->target()->getMarking());
-        $this->em->clear();
-        $old = $this->em->find(TranslationJob::class, $old->requestId);
-        self::assertSame('stale', $old->outcome);
         self::assertSame($before, $this->pendingNotifications());
-
-        $new = $this->em->getRepository(TranslationJob::class)->findOneBy(['status' => TranslationJob::STATUS_PENDING]);
-        $this->handle($this->workerResult($new, ['translated_text' => 'New answer.']));
-        self::assertSame('New answer.', $this->target()->targetText);
     }
 
-    public function testFailedResultLeavesTargetUntranslatedAndSendsNoCallback(): void
+    public function testFailedResultIsParkedAndTheTargetIsSentAgainOnTheNextPush(): void
     {
         $this->push();
         $before = $this->pendingNotifications();
-        $this->handle($this->workerResult($this->onlyJob(), [
+
+        $this->expectRejected($this->workerResult([
             'status' => 'failed',
             'translated_text' => null,
             'error' => ['code' => 'input_too_long', 'message' => 'Sentence exceeds 120 tokens.', 'retryable' => false],
-        ]));
+        ]), 'input_too_long');
 
         $target = $this->target();
         self::assertSame(WF::PLACE_UNTRANSLATED, $target->getMarking());
         self::assertNull($target->targetText);
-        $job = $this->onlyJob();
-        self::assertSame(TranslationJob::STATUS_FAILED, $job->status);
-        self::assertSame('input_too_long', $job->error['code']);
-        self::assertFalse($job->error['retryable']);
-        self::assertSame($before, $this->pendingNotifications());
+        self::assertSame($before, $this->pendingNotifications(), 'no callback for a failure');
+
+        $this->publisher->published = [];
+        $this->push();
+        self::assertCount(1, $this->publisher->published, 'an untranslated Target is a cache miss again');
     }
 
     public function testEmptyCompletedTranslationIsAFailureNotATranslation(): void
     {
         $this->push();
-        $this->handle($this->workerResult($this->onlyJob(), ['translated_text' => '  ']));
+
+        $this->expectRejected($this->workerResult(['translated_text' => '  ']), 'empty translation');
 
         self::assertSame(WF::PLACE_UNTRANSLATED, $this->target()->getMarking());
-        self::assertSame('empty_translation', $this->onlyJob()->error['code']);
     }
 
     public function testResultFromTheWrongVariantIsRejectedUnapplied(): void
     {
         $this->push();
-        $job = $this->onlyJob();
 
-        try {
-            $this->handle($this->workerResult($job, ['provenance' => ['model' => self::MODEL, 'revision' => self::REVISION, 'variant' => 'base']]));
-            self::fail('A base-variant result must not be applied to a tiny profile job.');
-        } catch (UnrecoverableMessageHandlingException $e) {
-            self::assertStringContainsString('variant', $e->getMessage());
-        }
+        $this->expectRejected($this->workerResult(['provenance' => ['model' => self::MODEL, 'revision' => self::REVISION, 'variant' => 'base']]), 'variant');
 
-        self::assertSame(WF::PLACE_UNTRANSLATED, $this->target()->getMarking());
-        self::assertSame(TranslationJob::STATUS_PENDING, $this->onlyJob()->status);
+        self::assertSame(WF::PLACE_QUEUED, $this->target()->getMarking());
     }
 
-    public function testResultNamingAnotherProfileOrUnknownRequestIsRejected(): void
+    public function testResultNamingAnotherProfileOrUnknownTargetIsRejected(): void
     {
         $this->push();
-        $job = $this->onlyJob();
 
-        foreach ([['profile' => 'euronano-base-v1'], ['request_id' => '00000000-0000-7000-8000-000000000000']] as $override) {
-            try {
-                $this->handle($this->workerResult($job, $override));
-                self::fail('Expected rejection for '.json_encode($override));
-            } catch (UnrecoverableMessageHandlingException) {
-            }
-        }
-        self::assertSame(TranslationJob::STATUS_PENDING, $this->onlyJob()->status);
+        $this->expectRejected($this->workerResult(['profile' => 'euronano-base-v1']), 'but the Target is');
+        $this->expectRejected($this->workerResult(['request_id' => '0000000000000000']), 'No Target');
+        self::assertSame(WF::PLACE_QUEUED, $this->target()->getMarking());
     }
 
     public function testMalformedBodyIsParkedNotRequeued(): void
@@ -322,38 +276,37 @@ final class TranslationWorkerTest extends KernelTestCase
         $this->handle($message);
     }
 
-    public function testPublishFailureKeepsTheJobPendingForRetry(): void
+    public function testUnconfirmedPublishLeavesTheTargetUntranslatedForRetry(): void
     {
-        $this->push();
-        $this->publisher->failWith = new \RuntimeException('unroutable');
+        $this->publisher->failWith = new TransportException('unroutable');
 
         try {
-            $this->publishOutbox();
-            self::fail('A failed publish must throw so Messenger retries the outbox message.');
-        } catch (\RuntimeException) {
+            $this->push();
+            self::fail('A publish the broker did not confirm must fail the batch so Messenger retries it.');
+        } catch (TransportException) {
         }
 
-        self::assertSame(TranslationJob::STATUS_PENDING, $this->onlyJob()->status);
+        self::assertSame(WF::PLACE_UNTRANSLATED, $this->target()->getMarking());
     }
 
-    public function testUnsupportedPairIsRejectedBeforeAnyJob(): void
+    public function testUnsupportedPairIsRejectedBeforeAnyWrite(): void
     {
         $response = $this->push('Hello.', source: 'en', target: 'fr');
 
         self::assertArrayHasKey('error', $response);
-        self::assertSame([], $this->em->getRepository(TranslationJob::class)->findAll());
-        self::assertSame([], $this->outbox->getSent());
+        self::assertSame([], $this->em->getRepository(Target::class)->findAll());
+        self::assertSame([], $this->publisher->published);
     }
 
     public function testContractExampleRoundTripsThroughTheWireSerializer(): void
     {
-        $body = '{"schema_version":1,"type":"translation.result","request_id":"unique-id","profile":"euronano-tiny-v1","source_locale":"fr","target_locale":"en","status":"completed","translated_text":"Hello.","provenance":{"model":"qvac/TranslatePsy-EuroNano","revision":"3a5e1e4e2f7001ff5cfd79785bef03cf19281b73","variant":"tiny","runtime":"bergamot","quantization":"intgemm","beam_size":1},"metrics":{"elapsed_ms":12.3,"total_tokens":3},"confidence":null}';
+        $body = '{"schema_version":1,"type":"translation.result","request_id":"6fe29a3972c954f1","profile":"euronano-tiny-v1","source_locale":"fr","target_locale":"en","status":"completed","translated_text":"Hello.","provenance":{"model":"qvac/TranslatePsy-EuroNano","revision":"3a5e1e4e2f7001ff5cfd79785bef03cf19281b73","variant":"tiny","runtime":"bergamot","quantization":"intgemm","beam_size":1},"metrics":{"elapsed_ms":12.3,"total_tokens":3},"confidence":null}';
         $serializer = new TranslationResultJsonSerializer();
         $message = $serializer->decode(['body' => $body, 'headers' => []])->getMessage();
 
         self::assertInstanceOf(TranslationResultMessage::class, $message);
         self::assertSame('Hello.', $message->translatedText);
-        $encoded = $serializer->encode(new \Symfony\Component\Messenger\Envelope($message));
+        $encoded = $serializer->encode(new Envelope($message));
         self::assertSame(['Content-Type' => 'application/json'], $encoded['headers']);
         // Nulls are omitted on encode; everything else survives the round trip unchanged.
         self::assertEquals(array_filter(json_decode($body, true), static fn ($v) => $v !== null), json_decode($encoded['body'], true));

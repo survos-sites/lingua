@@ -11,6 +11,7 @@ use PhpAmqpLib\Connection\AMQPConnectionFactory;
 use PhpAmqpLib\Message\AMQPMessage;
 use Symfony\Component\DependencyInjection\Attribute\AsAlias;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Messenger\Exception\TransportException;
 
 /**
  * Publishes plain-JSON jobs with publisher confirms AND `mandatory`; used by the send-only
@@ -19,8 +20,8 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * Not jwage/phpamqplib-messenger's AMQP transport: it cannot publish
  * mandatory, and with confirms alone a job sent to a routing key nobody has bound (worker
  * queue not declared yet, typo in a profile's routingKey) is acked by the broker and silently
- * dropped. Here a basic.return, a nack, or a confirm timeout all throw, so the outbox message
- * whose handler dispatched the job retries and finally lands in the Doctrine `failed` transport.
+ * dropped. Here a basic.return, a nack, or a confirm timeout all throw, so TargetWorkflow's
+ * `dispatch` transition fails and the Target stays untranslated for the next push and finally lands in the Doctrine `failed` transport.
  *
  * The exchange is NOT declared here — see messenger.yaml `translation_results`, which owns it.
  */
@@ -65,14 +66,14 @@ final class AmqpTranslationJobPublisher implements TranslationJobPublisherInterf
         } catch (\Throwable $e) {
             // A channel that failed mid-confirm cannot be trusted for the next job.
             $this->close();
-            throw new \RuntimeException(\sprintf('Publishing translation job %s failed: %s', $messageId, $e->getMessage()), 0, $e);
+            throw new TransportException(\sprintf('Publishing translation job %s failed: %s', $messageId, $e->getMessage()), 0, $e);
         }
 
         if ($returned !== null) {
-            throw new \RuntimeException(\sprintf('Translation job %s was unroutable on %s/%s (%s); is the worker queue declared?', $messageId, $this->exchange, $routingKey, $returned));
+            throw new TransportException(\sprintf('Translation job %s was unroutable on %s/%s (%s); is the worker queue declared?', $messageId, $this->exchange, $routingKey, $returned));
         }
         if ($nacked) {
-            throw new \RuntimeException(\sprintf('Broker nacked translation job %s.', $messageId));
+            throw new TransportException(\sprintf('Broker nacked translation job %s.', $messageId));
         }
     }
 
@@ -82,7 +83,7 @@ final class AmqpTranslationJobPublisher implements TranslationJobPublisherInterf
             return $this->channel;
         }
         if (($this->dsn ?? '') === '') {
-            throw new \RuntimeException('TRANSLATION_WORKER_AMQP_DSN is not configured.');
+            throw new TransportException('TRANSLATION_WORKER_AMQP_DSN is not configured.');
         }
 
         $this->close();

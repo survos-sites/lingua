@@ -93,14 +93,6 @@ when@dev:
     framework:
         messenger:
             transports:
-                # Transactional outbox: same `default` connection as the TranslationJob rows.
-                translation_outbox:
-                    dsn: 'doctrine://default?queue_name=translation_outbox'
-                    retry_strategy:
-                        max_retries: 5
-                        delay: 2000
-                        multiplier: 3
-                        max_delay: 300000
                 # Send-only: plain-JSON TranslationJobRequest, published mandatory + confirmed to the
                 # profile's routingKey. Broker credentials come from TRANSLATION_WORKER_AMQP_DSN.
                 translation_jobs: 'translation-jobs://'
@@ -129,16 +121,13 @@ when@dev:
                                 bindings:
                                     - { routing_key: 'lingua.results' }
             routing:
-                'App\Message\TranslationWorker\PublishTranslationJobMessage': translation_outbox
                 'App\Message\TranslationWorker\TranslationJobRequest': translation_jobs
 
 when@test:
     framework:
         messenger:
             transports:
-                translation_outbox: 'in-memory://'
                 translation_jobs: 'translation-jobs://'
                 translation_results: 'in-memory://'
             routing:
-                'App\Message\TranslationWorker\PublishTranslationJobMessage': translation_outbox
                 'App\Message\TranslationWorker\TranslationJobRequest': translation_jobs

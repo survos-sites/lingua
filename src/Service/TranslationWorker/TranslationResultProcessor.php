@@ -4,39 +4,41 @@ declare(strict_types=1);
 
 namespace App\Service\TranslationWorker;
 
-use App\Entity\TranslationJob;
+use App\Entity\Target;
 use App\Message\TranslationWorker\TranslationResultMessage;
 use App\Service\TargetTranslationApplier;
 use App\Service\TranslationEngineCatalog;
+use App\Workflow\TargetWorkflowInterface as WF;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 /**
- * Applies one worker result, idempotently.
+ * Applies one worker result to the Target whose key is its request_id. Idempotent.
  *
- * The job row is locked FOR UPDATE, so two deliveries of the same result (worker retry, broker
- * redelivery, outbox republish) serialize: the first applies, the second sees a terminal job
- * and only bumps duplicateResults.
+ * Writing goes through {@see TargetTranslationApplier}, the same translated vs identical
+ * decision as every other engine. Its flush fires TranslationCompletionNotifier, whose
+ * FlushTranslationNotificationsMessage is written to a Doctrine transport inside this
+ * transaction, so callbacks are scheduled if and only if the result commits.
  *
- * Writing the Target goes through {@see TargetTranslationApplier} — the same translated vs
- * identical decision as every other path. Its flush is what fires
- * TranslationCompletionNotifier, whose FlushTranslationNotificationsMessage goes to a Doctrine
- * transport inside this same transaction, so callbacks are scheduled iff the result commits.
+ * The row is locked FOR UPDATE, so concurrent duplicates serialize: the first applies, and the
+ * rest find a translated Target and are acked. A result from an older forced attempt cannot be
+ * told apart from the latest (same Target key), and does not need to be: the profile pins
+ * model, revision and variant, so either answer is equally valid.
  *
- * Results that disagree with the job they name are thrown as unrecoverable: they land in the
- * Doctrine `failed` transport for a human, and are never applied.
+ * Every rejection is unrecoverable and lands in the Doctrine `failed` transport, which is where
+ * failed jobs are inspected and retried:
+ *   - unknown request_id, or profile/locales that disagree with the Target
+ *   - a model/revision/variant that disagrees with the profile (never applied)
+ *   - a worker failure or an empty translation: the Target goes back to `u` first, so the
+ *     next push sends it again, and no callback fires.
  */
 final class TranslationResultProcessor
 {
-    public const string OUTCOME_TRANSLATED = 'translated';
-    public const string OUTCOME_IDENTICAL = 'identical';
-    public const string OUTCOME_FAILED = 'failed';
-    public const string OUTCOME_STALE = 'stale';
-
-    /** Worker provenance kept on the Target beyond the applier's profile allowlist. */
-    private const array EXTRA_PROVENANCE = ['variant', 'runtime', 'quantization', 'beam_size'];
+    public const string APPLIED = 'applied';
+    public const string DUPLICATE = 'duplicate';
+    public const string FAILED = 'failed';
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -53,63 +55,55 @@ final class TranslationResultProcessor
         $connection = $this->em->getConnection();
         $connection->beginTransaction();
         try {
-            $outcome = $this->apply($result);
+            $rejection = null;
+            $outcome = $this->apply($result, $rejection);
             $this->em->flush();
             $connection->commit();
-
-            return $outcome;
         } catch (\Throwable $e) {
             $connection->rollBack();
             $this->em->clear();
             throw $e;
         }
+
+        // Thrown only after the commit, so the Target's return to `u` survives the rejection.
+        if ($rejection !== null) {
+            throw new UnrecoverableMessageHandlingException($rejection);
+        }
+
+        return $outcome;
     }
 
-    private function apply(TranslationResultMessage $result): string
+    private function apply(TranslationResultMessage $result, ?string &$rejection): string
     {
-        $job = $this->em->find(TranslationJob::class, $result->requestId, LockMode::PESSIMISTIC_WRITE);
-        if ($job === null) {
-            throw new UnrecoverableMessageHandlingException('Unknown translation request_id '.$result->requestId.'.');
+        $target = $this->em->find(Target::class, $result->requestId, LockMode::PESSIMISTIC_WRITE);
+        if ($target === null) {
+            throw new UnrecoverableMessageHandlingException('No Target for translation request_id '.$result->requestId.'.');
         }
         // FOR UPDATE does not refresh an entity already in the identity map.
-        $this->em->refresh($job);
+        $this->em->refresh($target);
 
-        if ([$result->profile, $result->sourceLocale, $result->targetLocale] !== [$job->profile, $job->sourceLocale, $job->targetLocale]) {
-            throw new UnrecoverableMessageHandlingException(\sprintf(
-                'Result %s identity %s %s->%s does not match job %s %s->%s.',
-                $result->requestId, $result->profile, $result->sourceLocale, $result->targetLocale,
-                $job->profile, $job->sourceLocale, $job->targetLocale,
-            ));
+        $actual = [$result->profile, $result->sourceLocale, $result->targetLocale];
+        $expected = [$target->engine, (string) $target->source?->locale, (string) $target->targetLocale];
+        if ($actual !== $expected) {
+            throw new UnrecoverableMessageHandlingException(\sprintf('Result %s is for %s, but the Target is %s.', $result->requestId, implode(' ', $actual), implode(' ', $expected)));
         }
 
-        if ($job->isTerminal || $job->outcome === self::OUTCOME_STALE) {
-            $job->duplicateResults++;
-            $this->logger->info('duplicate result for translation job {id} ({status})', ['id' => $job->requestId, 'status' => $job->status]);
+        if (\in_array($target->getMarking(), WF::TRANSLATED_PLACES, true)) {
+            $this->logger->info('duplicate result for {key}; already {marking}', ['key' => $target->key, 'marking' => $target->getMarking()]);
 
-            return 'duplicate';
-        }
-
-        $job->completedAt = new \DateTimeImmutable('now');
-        $job->metrics = $result->metrics;
-        $job->provenance = $this->provenance($result);
-
-        // Superseded by a newer job, or the Target's Source no longer is what was sent:
-        // record what came back, but never let it overwrite the newer outcome.
-        if ($job->status === TranslationJob::STATUS_SUPERSEDED || $job->target->source?->hash !== $job->sourceHash) {
-            $job->outcome = self::OUTCOME_STALE;
-            $job->translatedText = $result->translatedText;
-            $this->logger->info('stale result for translation job {id}; not applied', ['id' => $job->requestId]);
-
-            return self::OUTCOME_STALE;
+            return self::DUPLICATE;
         }
 
         if (!$result->isCompleted()) {
-            return $this->fail($job, ['code' => $result->error->code ?? 'unknown', 'message' => $result->error->message ?? '', 'retryable' => $result->error->retryable ?? false]);
+            $error = $result->error;
+            $rejection = \sprintf('Worker failed %s: %s%s %s', $result->requestId, $error->code ?? 'unknown', ($error->retryable ?? false) ? ' (retryable)' : '', $error->message ?? '');
+
+            return $this->untranslated($target);
         }
 
-        $this->assertProvenance($job, $result);
+        $this->assertProvenance($target, $result);
 
-        $profile = $this->catalog->worker($job->profile);
+        $profile = $this->catalog->worker($target->engine);
         $metadata = array_filter([
             'provider' => $profile['provider'],
             'model' => $result->provenance?->model,
@@ -117,55 +111,42 @@ final class TranslationResultProcessor
             'profileVersion' => $profile['profileVersion'],
         ], static fn (mixed $v): bool => $v !== null);
 
-        $job->translatedText = $result->translatedText;
-        if (!$this->applier->apply($job->target, (string) $result->translatedText, null, $metadata)) {
-            return $this->fail($job, ['code' => 'empty_translation', 'message' => 'Worker returned an empty translation.', 'retryable' => false]);
+        if (!$this->applier->apply($target, (string) $result->translatedText, null, $metadata)) {
+            $rejection = 'Worker returned an empty translation for '.$result->requestId.'.';
+
+            return $this->untranslated($target);
         }
 
-        $job->target->provenance += array_filter(
-            [...array_intersect_key($job->provenance, array_flip(self::EXTRA_PROVENANCE)), 'request_id' => $job->requestId],
+        // Worker detail beyond the applier's profile allowlist; snake_case as on the wire.
+        $p = $result->provenance;
+        $target->provenance += array_filter(
+            ['variant' => $p?->variant, 'runtime' => $p?->runtime, 'quantization' => $p?->quantization, 'beam_size' => $p?->beamSize],
             static fn (mixed $v): bool => $v !== null,
         );
 
-        $job->status = TranslationJob::STATUS_COMPLETED;
-        $job->outcome = $job->target->isIdentical ? self::OUTCOME_IDENTICAL : self::OUTCOME_TRANSLATED;
+        return self::APPLIED;
+    }
 
-        return $job->outcome;
+    /** Back to `u`: no text, no callback, and the next push dispatches it again. */
+    private function untranslated(Target $target): string
+    {
+        $target->setMarking(WF::PLACE_UNTRANSLATED);
+
+        return self::FAILED;
     }
 
     /** A completed result must come from exactly the profile's pinned model. */
-    private function assertProvenance(TranslationJob $job, TranslationResultMessage $result): void
+    private function assertProvenance(Target $target, TranslationResultMessage $result): void
     {
-        $expected = $this->catalog->worker($job->profile);
+        $expected = $this->catalog->worker($target->engine);
         foreach (['model', 'revision', 'variant'] as $field) {
             $actual = $result->provenance?->{$field};
             if ($expected[$field] !== null && $actual !== $expected[$field]) {
                 throw new UnrecoverableMessageHandlingException(\sprintf(
                     'Result %s %s "%s" does not match profile %s ("%s").',
-                    $job->requestId, $field, $actual ?? 'missing', $job->profile, $expected[$field],
+                    $result->requestId, $field, $actual ?? 'missing', $target->engine, $expected[$field],
                 ));
             }
         }
-    }
-
-    /** @return array<string, string|int|null> snake_case, as on the wire */
-    private function provenance(TranslationResultMessage $result): array
-    {
-        $p = $result->provenance;
-
-        return $p === null ? [] : ['model' => $p->model, 'revision' => $p->revision, 'variant' => $p->variant, 'runtime' => $p->runtime, 'quantization' => $p->quantization, 'beam_size' => $p->beamSize];
-    }
-
-    /** @param array{code?:string, message?:string, retryable?:bool} $error */
-    private function fail(TranslationJob $job, array $error): string
-    {
-        // The Target stays untranslated: no text, no marking change, so no callback fires and
-        // a later push may dispatch it again.
-        $job->status = TranslationJob::STATUS_FAILED;
-        $job->outcome = self::OUTCOME_FAILED;
-        $job->error = $error;
-        $this->logger->warning('translation job {id} failed: {code}', ['id' => $job->requestId, 'code' => $error['code'] ?? '?']);
-
-        return self::OUTCOME_FAILED;
     }
 }
