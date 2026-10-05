@@ -46,7 +46,8 @@ final class TranslationWorkerContractTest extends TestCase
         foreach (self::PINNED as [$type, $version, $fingerprint]) {
             self::assertStringContainsString(\sprintf('"%s": %d,', $type, $version), $python);
             self::assertStringContainsString(\sprintf('"%s": "%s",', $type, $fingerprint), $python);
-            self::assertStringContainsString(\sprintf('type: Literal["%s"] = "%s"', $type, $type), $python);
+            self::assertStringContainsString(\sprintf('    type: Literal["%s"]'."\n", $type), $python);
+            self::assertStringContainsString(\sprintf('    schema_version: Literal[%d]'."\n", $version), $python);
         }
         self::assertStringContainsString('metrics: dict[str, float] = Field(default_factory=dict)', $python);
         self::assertStringNotContainsString('completed:', $python, 'methods must never leak into the wire shape');

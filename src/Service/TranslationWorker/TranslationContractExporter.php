@@ -256,10 +256,9 @@ final class TranslationContractExporter
     /** @param array<string, mixed> $prop */
     private function pyDefault(array $prop, bool $required): string
     {
-        if (isset($prop['const'])) {
-            return ' = '.self::py($prop['const']);
-        }
-        if ($required) {
+        // Envelope fields are required with no default: an unversioned message must not
+        // validate as the current version (Lingua's decoder rejects it too).
+        if (isset($prop['const']) || $required) {
             return '';
         }
 
