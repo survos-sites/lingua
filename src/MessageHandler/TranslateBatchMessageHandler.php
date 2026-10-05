@@ -287,27 +287,33 @@ final class TranslateBatchMessageHandler
         }
 
         $dispatched = 0;
-        try {
-            foreach ($targets as $target) {
-                // t/i are done and q is in flight; can() is the whole idempotency check.
-                if ($this->targetWorkflow->can($target, TargetWorkflowInterface::TRANSITION_DISPATCH)) {
-                    // Routed to the send-only `translation_jobs` transport: mandatory + confirmed,
-                    // so a throw here means the broker did not take it and the batch retries.
-                    $this->bus->dispatch(new TranslationJobRequest(
-                        requestId: (string) $target->key,
-                        text: (string) $target->source?->getText(),
-                        sourceLocale: (string) $target->source?->locale,
-                        targetLocale: (string) $target->targetLocale,
-                        profile: $target->engine,
-                    ));
-                    $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_DISPATCH);
-                    $dispatched++;
-                }
+        foreach ($targets as $target) {
+            // t/i are done and q is in flight; can() is the whole idempotency check.
+            if (!$this->targetWorkflow->can($target, TargetWorkflowInterface::TRANSITION_DISPATCH)) {
+                continue;
             }
-        } finally {
-            // Keep `q` for every job the broker confirmed, even if a later publish failed and
-            // Messenger retries this batch.
+
+            // `q` is committed BEFORE the publish, so a fast result always finds it there.
+            $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_DISPATCH);
             $this->em->flush();
+
+            try {
+                // Routed to the send-only `translation_jobs` transport: mandatory + confirmed,
+                // so a throw here means the broker did not take it.
+                $this->bus->dispatch(new TranslationJobRequest(
+                    requestId: (string) $target->key,
+                    text: (string) $target->source?->getText(),
+                    sourceLocale: (string) $target->source?->locale,
+                    targetLocale: (string) $target->targetLocale,
+                    profile: $target->engine,
+                ));
+            } catch (\Throwable $e) {
+                // Not sent: back to `u`, and Messenger retries the batch.
+                $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_REJECT);
+                $this->em->flush();
+                throw $e;
+            }
+            $dispatched++;
         }
 
         $this->logger->info('worker batch [{from}->{to}] {dispatched}/{requested} via {engine}', [

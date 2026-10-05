@@ -42,10 +42,12 @@ final class TargetTranslationApplier
      *                                    source text — i.e. the English-hub route. Recorded as
      *                                    provenance so a pivoted row is distinguishable from a
      *                                    direct one; see Target::$pivotLocale.
+     * @param bool        $mark           false when a workflow transition moves the marking
+     *                                    (worker results: TargetWorkflowInterface::TRANSITION_RECEIVE*)
      *
      * @return bool whether anything changed (false = empty result, left untouched)
      */
-    public function apply(Target $target, string $rawTranslation, ?string $pivotLocale = null, array $metadata = []): bool
+    public function apply(Target $target, string $rawTranslation, ?string $pivotLocale = null, array $metadata = [], bool $mark = true): bool
     {
         $translation = trim($rawTranslation);
 
@@ -72,18 +74,19 @@ final class TargetTranslationApplier
         $target->targetText = $translation;
         $target->pivotLocale = $pivotLocale;
 
-        // Compared against the ORIGINAL source text even on a pivoted row. "identical" means
-        // "the client gets back what it sent" — that is what a consumer acts on. Comparing
-        // against the English intermediate instead would flag a Danish→Hungarian row as
-        // identical whenever the English and Hungarian happened to match, which is not the
-        // question anyone is asking.
-        $target->setMarking($translation === $sourceText
+        // Compared against the ORIGINAL source text even on a pivoted row — see
+        // Target::$hasIdenticalText. Comparing against the English intermediate would flag a
+        // Danish→Hungarian row as identical whenever the English and Hungarian happened to match.
+        $place = $target->hasIdenticalText
             ? TargetWorkflowInterface::PLACE_IDENTICAL
-            : TargetWorkflowInterface::PLACE_TRANSLATED);
+            : TargetWorkflowInterface::PLACE_TRANSLATED;
+        if ($mark) {
+            $target->setMarking($place);
+        }
 
         $this->logger->info(sprintf(
             '%s [%s->%s] %s -> %s',
-            $target->getMarking(),
+            $place,
             $target->source?->locale,
             $target->targetLocale,
             self::snippet($sourceText),

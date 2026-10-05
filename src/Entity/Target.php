@@ -142,6 +142,13 @@ class Target implements RouteParametersInterface, MarkingInterface
     public bool $isTranslated { get => $this->marking === TargetWorkflowInterface::PLACE_TRANSLATED; }
     public bool $isIdentical { get => $this->marking === TargetWorkflowInterface::PLACE_IDENTICAL; }
 
+    /**
+     * The stored result is the source text unchanged. THE identical test: the applier marks by it,
+     * and TargetWorkflowInterface's receive guards route by it. Compared against the ORIGINAL
+     * source even on a pivoted row — "identical" means "the client gets back what it sent".
+     */
+    public bool $hasIdenticalText { get => $this->targetText !== null && $this->targetText === $this->source?->getText(); }
+
     #[ORM\PrePersist]
     #[ORM\PreUpdate]
     public function updatedTimestamps(): void

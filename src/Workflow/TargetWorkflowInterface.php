@@ -49,4 +49,17 @@ class TargetWorkflowInterface
      */
     #[Transition([self::PLACE_UNTRANSLATED], self::PLACE_QUEUED)]
     public const TRANSITION_DISPATCH = 'dispatch';
+
+    // A worker result landed on the Target (TranslationResultProcessor). The text is written
+    // first; the guards pick the destination. From `u` too: a result can outrun a publish that
+    // was reported as failed.
+    #[Transition([self::PLACE_QUEUED, self::PLACE_UNTRANSLATED], self::PLACE_TRANSLATED, guard: 'not subject.hasIdenticalText', guardLabel: 'differs from source')]
+    public const TRANSITION_RECEIVE = 'receive';
+    #[Transition([self::PLACE_QUEUED, self::PLACE_UNTRANSLATED], self::PLACE_IDENTICAL, guard: 'subject.hasIdenticalText', guardLabel: 'same as source')]
+    public const TRANSITION_RECEIVE_IDENTICAL = 'receive_identical';
+
+    // Worker failure, empty result, or a publish the broker did not confirm: back to `u`, so the
+    // next push sends it again. No callback fires.
+    #[Transition([self::PLACE_QUEUED], self::PLACE_UNTRANSLATED)]
+    public const TRANSITION_REJECT = 'reject';
 }

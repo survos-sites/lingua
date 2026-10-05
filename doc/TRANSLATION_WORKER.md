@@ -24,22 +24,24 @@ Worker profiles use the existing batch path, so intake is unchanged:
    not queued, exactly as for Libre/DeepL.
 2. `TranslateBatchMessageHandler` (queue `target.translate`) sees a `dispatch: worker` profile.
    Instead of calling an engine, it dispatches one `TranslationJobRequest` per Target to the
-   send-only `translation_jobs` transport, then applies TargetWorkflow's `dispatch` step
-   (u → q). The transport publishes plain JSON with mandatory + publisher confirms. If the broker
-   refuses or does not confirm, the batch throws and Messenger retries it. Targets already
+   send-only `translation_jobs` transport. Before that, it applies and commits TargetWorkflow's
+   `dispatch` step (u → q), so a fast result always finds the Target in `q`. The transport
+   publishes plain JSON with mandatory + publisher confirms. If the broker refuses or does not
+   confirm, that Target is `reject`ed back to `u` and the batch throws, so Messenger retries it. Targets already
    `q`, `t` or `i` are skipped, because `can(dispatch)` is false.
 3. `request_id` is the Target key: 16 hex characters, deterministic per (source, locale,
    profile). The result maps straight back to its row, with no job table.
 4. The worker publishes `translation.result` to `lingua.results`. The `translation_results`
    transport decodes it into `TranslationResultMessage`, and `TranslationResultProcessor` takes
    one of these paths:
-   - completed: applied via `TargetTranslationApplier` (translated vs identical) like every
-     engine. The pinned provenance (model, revision, variant, runtime, quantization,
-     beam_size) is stored on the Target, and the existing callback drain is scheduled in the
-     same transaction.
+   - completed: `TargetTranslationApplier` writes the text and the pinned provenance (model,
+     revision, variant, runtime, quantization, beam_size). Then the workflow moves the Target
+     through whichever guard passes: `receive` (q → t, text differs from source) or
+     `receive_identical` (q → i). The existing callback drain is scheduled in the same
+     transaction.
    - Target already t/i (a duplicate): acked, and nothing changes.
-   - worker failure or empty text: the Target goes back to `u` (no callback, and the next push
-     resends it). The message is parked in the Doctrine `failed` transport with the error.
+   - worker failure or empty text: `reject` (q → u), with no callback, and the next push resends
+     it. The message is parked in the Doctrine `failed` transport with the error.
    - malformed body, unknown key, wrong profile/locales, or a model/revision/variant that
      disagrees with the profile: parked in `failed`, never applied.
 

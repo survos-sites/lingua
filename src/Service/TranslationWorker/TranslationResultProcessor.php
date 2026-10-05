@@ -12,13 +12,17 @@ use App\Workflow\TargetWorkflowInterface as WF;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Target as WorkflowTarget;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Workflow\WorkflowInterface;
 
 /**
- * Applies one worker result to the Target whose key is its request_id. Idempotent.
+ * Lands one worker result on the Target whose key is its request_id, then moves it through
+ * TargetWorkflow: `receive` (→ t) or `receive_identical` (→ i), whichever guard passes, or
+ * `reject` (→ u) for a failure. Idempotent.
  *
- * Writing goes through {@see TargetTranslationApplier}, the same translated vs identical
- * decision as every other engine. Its flush fires TranslationCompletionNotifier, whose
+ * Text and provenance are written by {@see TargetTranslationApplier}, as for every other
+ * engine; the workflow does the moving. The flush fires TranslationCompletionNotifier, whose
  * FlushTranslationNotificationsMessage is written to a Doctrine transport inside this
  * transaction, so callbacks are scheduled if and only if the result commits.
  *
@@ -45,6 +49,7 @@ final class TranslationResultProcessor
         private readonly TargetTranslationApplier $applier,
         private readonly TranslationEngineCatalog $catalog,
         private readonly LoggerInterface $logger,
+        #[WorkflowTarget(WF::WORKFLOW_NAME)] private readonly WorkflowInterface $targetWorkflow,
     ) {
     }
 
@@ -111,10 +116,22 @@ final class TranslationResultProcessor
             'profileVersion' => $profile['profileVersion'],
         ], static fn (mixed $v): bool => $v !== null);
 
-        if (!$this->applier->apply($target, (string) $result->translatedText, null, $metadata)) {
+        if (!$this->applier->apply($target, (string) $result->translatedText, null, $metadata, mark: false)) {
             $rejection = 'Worker returned an empty translation for '.$result->requestId.'.';
 
             return $this->untranslated($target);
+        }
+
+        $received = false;
+        foreach ([WF::TRANSITION_RECEIVE, WF::TRANSITION_RECEIVE_IDENTICAL] as $transition) {
+            if ($this->targetWorkflow->can($target, $transition)) {
+                $this->targetWorkflow->apply($target, $transition);
+                $received = true;
+                break;
+            }
+        }
+        if (!$received) {
+            throw new UnrecoverableMessageHandlingException(\sprintf('Target %s cannot receive a result from %s.', $target->key, $target->getMarking()));
         }
 
         // Worker detail beyond the applier's profile allowlist; snake_case as on the wire.
@@ -130,7 +147,9 @@ final class TranslationResultProcessor
     /** Back to `u`: no text, no callback, and the next push dispatches it again. */
     private function untranslated(Target $target): string
     {
-        $target->setMarking(WF::PLACE_UNTRANSLATED);
+        if ($this->targetWorkflow->can($target, WF::TRANSITION_REJECT)) {
+            $this->targetWorkflow->apply($target, WF::TRANSITION_REJECT);
+        }
 
         return self::FAILED;
     }
