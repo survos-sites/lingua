@@ -9,9 +9,18 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextEditorField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class SourceCrudController extends AbstractCrudController
 {
+    public static function getSubscribedServices(): array
+    {
+        // EasyAdmin still subscribes to the component alias deprecated in Symfony 8.2.
+        return array_replace(parent::getSubscribedServices(), [
+            'event_dispatcher' => '?'.EventDispatcherInterface::class,
+        ]);
+    }
+
     public static function getEntityFqcn(): string
     {
         return Source::class;

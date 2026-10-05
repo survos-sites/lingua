@@ -6,6 +6,7 @@ namespace App\Entity;
 use ApiPlatform\Doctrine\Orm\Filter\ExactFilter;
 use ApiPlatform\Metadata\QueryParameter;
 use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use App\Repository\TargetRepository;
@@ -69,6 +70,7 @@ class Target implements RouteParametersInterface, MarkingInterface
         public string $engine = 'libre',
 
         #[ORM\Id]
+        #[ApiProperty(identifier: true)]
         #[ORM\Column(length: 32)]
         #[Field(searchable: true, sortable: true, order: 10, width: '14rem')]
         public ?string $key = null,
@@ -152,6 +154,8 @@ class Target implements RouteParametersInterface, MarkingInterface
         return HashUtil::calcTranslationKey($source->hash, $targetLocale, $engine);
     }
 
+    // This convenience getter must not become a second API identifier alongside key.
+    #[ApiProperty(identifier: false)]
     public function getId(): string
     {
         return $this->key ?? '';
