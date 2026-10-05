@@ -10,6 +10,7 @@ use App\Message\FlushTranslationNotificationsMessage;
 use App\Message\TranslateBatchMessage;
 use App\Repository\SourceRepository;
 use App\Repository\TargetRepository;
+use App\Service\TranslationWorker\TranslationJobDispatcher;
 use App\Workflow\TargetWorkflowInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -65,6 +66,7 @@ final class TranslationIntakeService
         private readonly AsyncQueueLocator      $asyncQueueLocator,
         private readonly TranslationEngineSelector $engineSelector,
         private readonly TranslationEngineCatalog $engineCatalog,
+        private readonly ?TranslationJobDispatcher $workerJobs = null,
     ) {}
 
     /**
@@ -368,7 +370,18 @@ final class TranslationIntakeService
         //
         // The two sets are disjoint by construction (a Source is in $hubPendingSourceIds or it
         // is not), so nothing is dispatched twice and nothing is dropped.
-        if ($from !== $hub && $spokeLocales !== []) {
+        $workerJobs = null;
+
+        if ($this->engineCatalog->isWorker($engine)) {
+            // Worker profiles: one durable job per Target on a cache miss, sent to the
+            // profile's own queue. No English hub — a worker profile is asked only for the
+            // pairs it declared, and pivoting would invent a request the caller never made.
+            // Every Target in the request, not just $toDispatch: the dispatcher owns the
+            // memory-hit decision (any TRANSLATED_PLACE) and reports hits back to the caller.
+            $workerJobs = ($this->workerJobs ?? throw new \LogicException('Worker profiles need TranslationJobDispatcher.'))
+                ->dispatch(array_values($targetByTuple), $engine, $forceDispatch);
+            $queued = $workerJobs['queued'] + $workerJobs['inFlight'];
+        } elseif ($from !== $hub && $spokeLocales !== []) {
             $hubKeys = $toDispatch[$hub] ?? [];
 
             foreach ($this->chunkByChars($hubKeys, $charsByTargetKey) as $chunk) {
@@ -463,6 +476,7 @@ final class TranslationIntakeService
             'queued'  => $queued,
             'items'   => \is_array($items) ? $items : [],
             'missing' => $missingOut,
+            ...($workerJobs === null ? [] : ['jobs' => $workerJobs]),
         ];
     }
 

@@ -60,4 +60,21 @@ final class TranslationEngineCatalogTest extends TestCase
             self::assertSame(0, $result['queued']);
         }
     }
+
+    public function testWorkerProfilesNeedNoTranslatorAndUseConfiguredPairsOnly(): void
+    {
+        $manager = new TranslatorManager(new TranslatorRegistry(new ServiceLocator([]), [], 'libre'));
+        $catalog = new TranslationEngineCatalog($manager, new MockHttpClient(), new ArrayAdapter(), ['euronano-tiny-v1' => [
+            'dispatch' => 'worker', 'provider' => 'ai-tools', 'model' => 'qvac/TranslatePsy-EuroNano', 'revision' => 'r1',
+            'variant' => 'tiny', 'routingKey' => 'euronano-tiny-v1.to-en', 'languagePairs' => ['fr' => ['en'], 'en' => ['fr']],
+        ]]);
+
+        self::assertSame(['euronano-tiny-v1'], $catalog->names());
+        self::assertTrue($catalog->isWorker('euronano-tiny-v1'));
+        $profile = $catalog->validate('euronano-tiny-v1', 'en', ['fr']);
+        self::assertSame(['engine', 'provider', 'model', 'revision', 'profileVersion'], array_keys($profile), 'routing stays internal');
+        self::assertSame('euronano-tiny-v1.to-en', $catalog->worker('euronano-tiny-v1')['routingKey']);
+        $this->expectException(\InvalidArgumentException::class);
+        $catalog->validate('euronano-tiny-v1', 'de', ['en']);
+    }
 }

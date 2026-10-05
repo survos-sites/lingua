@@ -84,3 +84,61 @@ framework:
 #        messenger:
 #            transports:
 #                async: 'in-memory://'
+
+# --- Native translation worker (dev/test only; see doc/TRANSLATION_WORKER.md) ---
+# Worker profiles (dispatch: worker in services.yaml) are dev-only, so these transports and
+# their routing are too: production config is untouched. Wire shapes are the DTOs in
+# src/Message/TranslationWorker; Python models are generated from them.
+when@dev:
+    framework:
+        messenger:
+            transports:
+                # Transactional outbox: same `default` connection as the TranslationJob rows.
+                translation_outbox:
+                    dsn: 'doctrine://default?queue_name=translation_outbox'
+                    retry_strategy:
+                        max_retries: 5
+                        delay: 2000
+                        multiplier: 3
+                        max_delay: 300000
+                # Send-only: plain-JSON TranslationJobRequest, published mandatory + confirmed to the
+                # profile's routingKey. Broker credentials come from TRANSLATION_WORKER_AMQP_DSN.
+                translation_jobs: 'translation-jobs://'
+                # Plain-JSON results from the FastStream worker. Lingua owns this queue, its
+                # binding, and the exchange; the worker owns its job queues and DLQs.
+                # max_retries 0: a result that cannot be applied goes straight to Doctrine
+                # `failed`, rather than through an AMQP delay queue that would need re-encoding.
+                translation_results:
+                    dsn: '%env(TRANSLATION_WORKER_AMQP_DSN)%'
+                    serializer: App\Messenger\TranslationResultJsonSerializer
+                    retry_strategy:
+                        max_retries: 0
+                    options:
+                        prefetch_count: 1
+                        # Retries are 0, so no delay exchange/queues; the dev broker user may
+                        # only configure ai.translation.* / lingua.translation.* anyway.
+                        delay:
+                            enabled: false
+                        exchange:
+                            name: '%translation.worker_exchange%'
+                            type: direct
+                            durable: true
+                        queues:
+                            lingua.translation.results.v1:
+                                durable: true
+                                bindings:
+                                    - { routing_key: 'lingua.results' }
+            routing:
+                'App\Message\TranslationWorker\PublishTranslationJobMessage': translation_outbox
+                'App\Message\TranslationWorker\TranslationJobRequest': translation_jobs
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                translation_outbox: 'in-memory://'
+                translation_jobs: 'translation-jobs://'
+                translation_results: 'in-memory://'
+            routing:
+                'App\Message\TranslationWorker\PublishTranslationJobMessage': translation_outbox
+                'App\Message\TranslationWorker\TranslationJobRequest': translation_jobs

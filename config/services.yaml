@@ -18,6 +18,8 @@ parameters:
     # LibreTranslate has no Croatian model; the configured DeepL engine supports it.
     translation.source_engines:
         hr: deepl
+    # Direct exchange shared with the native ai-tools worker (contract v1).
+    translation.worker_exchange: 'ai.translation.v1'
 
 services:
     # default configuration for services in *this* file
@@ -71,3 +73,46 @@ when@dev:
                 languagesUrl: '%env(resolve:EURONANO_HOST)%/languages'
                 headers:
                     Authorization: 'Bearer %env(default::EURONANO_API_KEY)%'
+            # Queue-worker profiles (ai-tools native FastStream worker, contract v1). The profile
+            # name IS the Target engine, so Tiny and Base keep separate translation memory.
+            # languagePairs is what the worker accepts — upstream's call, not Lingua's.
+            euronano-tiny-v1: &euronano_worker
+                dispatch: worker
+                provider: ai-tools
+                model: qvac/TranslatePsy-EuroNano
+                revision: 3a5e1e4e2f7001ff5cfd79785bef03cf19281b73
+                variant: tiny
+                profileVersion: '1'
+                routingKey: euronano-tiny-v1.to-en
+                languagePairs:
+                    de: [en]
+                    es: [en]
+                    fr: [en]
+                    it: [en]
+                    pt: [en]
+                    cs: [en]
+                    fi: [en]
+                    nl: [en]
+                    sv: [en]
+            euronano-base-v1:
+                <<: *euronano_worker
+                variant: base
+                routingKey: euronano-base-v1.to-en
+
+when@test:
+    parameters:
+        translation.engine_profiles:
+            <<: *translation_profiles
+            euronano-tiny-v1:
+                dispatch: worker
+                provider: ai-tools
+                model: qvac/TranslatePsy-EuroNano
+                revision: 3a5e1e4e2f7001ff5cfd79785bef03cf19281b73
+                variant: tiny
+                profileVersion: '1'
+                routingKey: euronano-tiny-v1.to-en
+                languagePairs: { de: [en], es: [en], fr: [en], it: [en], pt: [en], cs: [en], fi: [en], nl: [en], sv: [en] }
+    services:
+        App\Service\TranslationWorker\TranslationJobPublisherInterface:
+            class: App\Tests\Support\RecordingTranslationJobPublisher
+            public: true
