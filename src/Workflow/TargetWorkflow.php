@@ -78,7 +78,7 @@ final class TargetWorkflow
         // per HTTP request is the SLOW path; it stays because every TransitionMessage already
         // in the queue still arrives here, but the two must not disagree about what a
         // translation means. See App\Message\TranslateBatchMessage.
-        if (!$this->applier->apply($target, $response->translatedText)) {
+        if (!$this->applier->apply($target, $response->translatedText, metadata: $response->meta)) {
             // Abort before Workflow moves the target to its completed destination.
             throw new \RuntimeException('Translation engine returned empty text for ' . $target->key);
         }

@@ -74,7 +74,12 @@ final class ApiController extends AbstractController
             return $this->json(['status' => 'error', 'error' => 'Invalid or missing JSON body.'], 400);
         }
 
-        $result = $this->intake->handle($payload);
+        try {
+            $result = $this->intake->handle($payload);
+        } catch (\Symfony\Contracts\HttpClient\Exception\ExceptionInterface $e) {
+            return $this->json(['status' => 'error', 'error' => 'Translation service capabilities are temporarily unavailable.'], 503);
+        }
+        if (isset($result['error'])) { return $this->json(['status' => 'error', 'error' => $result['error']], 400); }
 
         // Avoid noisy pretty-printed logs at warning level; keep one concise info line.
         $this->logger->info('Lingua batch handled', [

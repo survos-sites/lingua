@@ -128,7 +128,7 @@ final class TranslateBatchMessageHandler
 
         $applied = 0;
         foreach ($pending as $i => $target) {
-            if ($this->applier->apply($target, (string) $translations[$i], $message->pivotLocale)) {
+            if ($this->applier->apply($target, (string) $translations[$i], $message->pivotLocale, $result->meta)) {
                 $applied++;
             }
         }

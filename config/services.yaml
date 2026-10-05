@@ -4,6 +4,17 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    # Immutable names: use a new profile name when a model, revision, or prompt changes.
+    translation.engine_profiles: &translation_profiles
+        libre:
+            provider: libretranslate
+            languagesUrl: '%env(resolve:LIBRE_HOST)%/languages'
+        deepl:
+            provider: deepl
+            languagesUrl: 'https://api-free.deepl.com/v2/languages?type=source'
+            targetLanguagesUrl: 'https://api-free.deepl.com/v2/languages?type=target'
+            headers:
+                Authorization: 'DeepL-Auth-Key %env(resolve:DEEPL_API_KEY)%'
     # LibreTranslate has no Croatian model; the configured DeepL engine supports it.
     translation.source_engines:
         hr: deepl
@@ -48,3 +59,15 @@ services:
             $body: '@webhook.body_configurator.json'
             $signer: '@webhook.signer'
             $logger: '@logger'
+
+when@dev:
+    parameters:
+        translation.engine_profiles:
+            <<: *translation_profiles
+            euronano:
+                provider: ai-tools
+                model: qvac/TranslatePsy-EuroNano
+                revision: 3a5e1e4e2f7001ff5cfd79785bef03cf19281b73
+                languagesUrl: '%env(resolve:EURONANO_HOST)%/languages'
+                headers:
+                    Authorization: 'Bearer %env(default::EURONANO_API_KEY)%'

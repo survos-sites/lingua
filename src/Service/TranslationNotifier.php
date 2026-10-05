@@ -8,10 +8,6 @@ use App\Entity\TranslationSubscription;
 use App\Repository\TranslationSubscriptionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Console\Attribute\AsCommand;
-use Symfony\Component\Console\Attribute\Option;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\RemoteEvent\RemoteEvent;
@@ -136,37 +132,6 @@ final class TranslationNotifier
     }
 
     /**
-     * Recovery drain for already-finished translations whose announcement was missed.
-     * New results normally wake the drain through TranslationCompletionNotifier after flush.
-     */
-    #[AsCommand('lingua:webhook:flush', 'Send translation.completed webhooks for translations not yet announced')]
-    public function flushCommand(
-        SymfonyStyle $io,
-        #[Option('Keep going until nothing is left to announce, instead of one page per subscriber')]
-        bool $all = false,
-    ): int {
-        $webhooks = 0;
-        $translations = 0;
-
-        do {
-            $result = $this->flushAll();
-            $webhooks += $result['queued'];
-            $translations += $result['translations'];
-        } while ($all && $result['full']);
-
-        if ($translations === 0) {
-            $io->success('Nothing pending — every finished translation has already been announced.');
-
-            return Command::SUCCESS;
-        }
-
-        $io->success(\sprintf('Queued %d webhook(s) carrying %d translation(s).', $webhooks, $translations));
-        $io->note('Queued only. Deliver with: bin/console messenger:consume webhook -v');
-
-        return Command::SUCCESS;
-    }
-
-    /**
      * @param TranslationSubscription[] $subscriptions
      *
      * @return array<string,mixed>
@@ -182,6 +147,7 @@ final class TranslationNotifier
                 // The subscriber's key, not ours — see the class docblock.
                 'ref' => $subscription->clientRef,
                 'targetLocale' => $target->targetLocale,
+                ...array_intersect_key($target->provenance, array_flip(['provider', 'model', 'revision', 'profileVersion'])),
                 'engine' => $target->engine,
                 'text' => $target->targetText,
                 // `identical` is a real outcome, not a failure: the engine returned the source

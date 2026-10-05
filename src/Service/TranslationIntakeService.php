@@ -64,6 +64,7 @@ final class TranslationIntakeService
         private readonly LoggerInterface        $logger,
         private readonly AsyncQueueLocator      $asyncQueueLocator,
         private readonly TranslationEngineSelector $engineSelector,
+        private readonly TranslationEngineCatalog $engineCatalog,
     ) {}
 
     /**
@@ -130,6 +131,13 @@ final class TranslationIntakeService
                 'missing' => [],
                 'error'   => 'No target locales after normalization (or only equals source).',
             ];
+        }
+
+        // Both REST and RPC must reject unsupported requests before any DB writes or dispatch.
+        try {
+            $profile = $this->engineCatalog->validate($engine, $from, $toLocales);
+        } catch (\InvalidArgumentException $e) {
+            return ['queued' => 0, 'items' => [], 'missing' => $rawTexts, 'error' => $e->getMessage()];
         }
 
         $insertNewStrings = (bool) $payload->insertNewStrings;
@@ -448,6 +456,10 @@ final class TranslationIntakeService
         ]);
 
         return [
+            'engine' => $engine,
+            'profile' => $profile,
+            'source' => $from,
+            'targets' => $toLocales,
             'queued'  => $queued,
             'items'   => \is_array($items) ? $items : [],
             'missing' => $missingOut,

@@ -11,7 +11,6 @@ use OV\JsonRPCAPIBundle\Core\Annotation\JsonRPCAPI;
 use OV\JsonRPCAPIBundle\Core\ApiMethodInterface;
 use OV\JsonRPCAPIBundle\Core\JRPCException;
 use Survos\Lingua\Contracts\Dto\BatchRequest;
-use Survos\TranslatorBundle\Service\TranslatorManager;
 
 /**
  * The write half of the lingua contract: texts in, translation jobs queued. Phase 2.
@@ -55,7 +54,6 @@ final readonly class TranslateBatchMethod implements ApiMethodInterface
 {
     public function __construct(
         private TranslationIntakeService $intake,
-        private TranslatorManager $translators,
     ) {
     }
 
@@ -64,7 +62,6 @@ final readonly class TranslateBatchMethod implements ApiMethodInterface
      */
     public function call(Request $request): Response
     {
-        $this->assertEngineIsKnown($request->getEngine());
 
         $result = $this->intake->handle(new BatchRequest(
             source: $request->getSource(),
@@ -87,32 +84,12 @@ final readonly class TranslateBatchMethod implements ApiMethodInterface
         }
 
         return new Response(
+            engine: $result['engine'] ?? null,
+            profile: $result['profile'] ?? [],
             queued: (int) ($result['queued'] ?? 0),
             items: is_array($result['items'] ?? null) ? $result['items'] : [],
             missing: is_array($result['missing'] ?? null) ? array_values($result['missing']) : [],
         );
     }
 
-    /**
-     * @throws JRPCException when the engine is not one this lingua instance can run
-     */
-    private function assertEngineIsKnown(?string $engine): void
-    {
-        if ($engine === null || $engine === '') {
-            return; // intake falls back to its own default
-        }
-
-        $known = $this->translators->names();
-        if (in_array($engine, $known, true)) {
-            return;
-        }
-
-        sort($known);
-
-        throw new JRPCException(
-            'Invalid params.',
-            JRPCException::INVALID_PARAMS,
-            sprintf('Unknown engine "%s". Configured engines: %s.', $engine, implode(', ', $known)),
-        );
-    }
 }

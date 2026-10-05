@@ -64,7 +64,7 @@ class Target implements RouteParametersInterface, MarkingInterface
         #[Field(sortable: true, filterable: true, widget: Widget::Select, facet: true, order: 20, width: '6rem')]
         public ?string $targetLocale = null,
 
-        #[ORM\Column(length: 12, nullable: false, options: ['default' => 'libre'])]
+        #[ORM\Column(length: 100, nullable: false, options: ['default' => 'libre'])]
         #[Groups(['target.read', 'target.write', 'source.export'])]
         #[Field(sortable: true, filterable: true, widget: Widget::Select, facet: true, order: 30, width: '7rem')]
         public string $engine = 'libre',
@@ -148,6 +148,10 @@ class Target implements RouteParametersInterface, MarkingInterface
     {
         $this->updatedAt = new \DateTimeImmutable('now');
     }
+
+    #[ORM\Column(type: Types::JSON, options: ['default' => '{}'])]
+    #[Groups(['target.read', 'source.export'])]
+    public array $provenance = [];
 
     public static function calcKey(Source $source, string $targetLocale, ?string $engine = null): string
     {

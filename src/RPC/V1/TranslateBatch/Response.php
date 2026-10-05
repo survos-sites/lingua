@@ -28,6 +28,8 @@ final readonly class Response
         public int $queued = 0,
         public array $items = [],
         public array $missing = [],
+        public ?string $engine = null,
+        public array $profile = [],
     ) {
     }
 }

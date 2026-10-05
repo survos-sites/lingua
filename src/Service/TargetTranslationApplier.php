@@ -32,6 +32,7 @@ final class TargetTranslationApplier
 {
     public function __construct(
         private readonly LoggerInterface $logger,
+        private readonly ?TranslationEngineCatalog $engineCatalog = null,
     ) {
     }
 
@@ -44,7 +45,7 @@ final class TargetTranslationApplier
      *
      * @return bool whether anything changed (false = empty result, left untouched)
      */
-    public function apply(Target $target, string $rawTranslation, ?string $pivotLocale = null): bool
+    public function apply(Target $target, string $rawTranslation, ?string $pivotLocale = null, array $metadata = []): bool
     {
         $translation = trim($rawTranslation);
 
@@ -63,6 +64,11 @@ final class TargetTranslationApplier
 
         $sourceText = $target->source?->getText() ?? '';
 
+        $profile = $this->engineCatalog?->describe($target->engine) ?? ['engine' => $target->engine];
+        foreach (['model', 'revision'] as $field) {
+            if (isset($profile[$field], $metadata[$field]) && $profile[$field] !== $metadata[$field]) { throw new \RuntimeException('Engine model changed; register a new profile before publishing its results.'); }
+        }
+        $target->provenance = array_replace($profile, array_intersect_key($metadata, array_flip(['provider', 'model', 'revision', 'profileVersion'])));
         $target->targetText = $translation;
         $target->pivotLocale = $pivotLocale;
 
