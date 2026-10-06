@@ -92,15 +92,19 @@ The obvious implementation — fire from the translate transition — floods. A 
 requests to a subscriber that wanted a handful of batches. It is also the exact shape that
 buried mediary's queue when every workflow transition dispatched its own Meilisearch job.
 
-So `App\Message\FlushTranslationNotificationsMessage` coalesces instead. Each run announces one
-page per subscriber and then decides:
+`TranslationCompletionNotifier` dispatches
+`App\Message\FlushTranslationNotificationsMessage` after Doctrine flush saves
+completed translations. Intake also dispatches it when a subscription can use an
+already-completed translation.
 
-- page came back **full** → re-dispatch immediately, more is ready now
-- nothing sent but rows still **waiting** on the translator → re-dispatch after 30s
-- nothing pending → **stop**
+The `translation_notifications` worker coalesces wakeups, announces one page per
+subscriber, and re-dispatches only if a full page indicates more ready results.
+It stops when there is no ready work; future completions wake it again. Failed
+scans are retried through Messenger.
 
-Steady state is an empty queue, not a heartbeat. The chain gives up after ~1 hour of
-never-finishing translations; `lingua:webhook:flush` is the way back in.
+There is no polling heartbeat or separate flush console command. Recovery uses
+normal Messenger failed-message inspection and retry. Re-submitting a subscription
+also clears its notification marker and queues a new wakeup.
 
 ---
 
@@ -112,8 +116,8 @@ never-finishing translations; `lingua:webhook:flush` is the way back in.
 LINGUA_WEBHOOK_SECRET=
 ```
 
-Deliveries and the flush share the `webhook` transport, so pausing announcements is one
-decision rather than two, and a subscriber being down cannot stall `target.translate`.
+Notification scans use `translation_notifications`; outbound HTTP deliveries use
+`webhook`. A subscriber being down cannot stall translation or notification scans.
 
 ---
 
@@ -121,13 +125,15 @@ decision rather than two, and a subscriber being down cannot stall `target.trans
 
 ```bash
 bin/console messenger:consume target.translate -v   # translate (existing `translator` worker)
-bin/console messenger:consume webhook -v            # flush + deliver
-bin/console lingua:webhook:flush --all              # manual drain
+bin/console messenger:consume translation_notifications -v # scan ready results
+bin/console messenger:consume webhook -v            # deliver queued webhooks
 bin/console messenger:failed:show
 ```
 
-The `webhook` transport needs a worker in the Procfile. Queued and never consumed looks exactly
-like never sent.
+The Procfile has separate `notifications` and `webhook` workers. Both must be
+running; queued and never consumed looks exactly like never sent. Remove any old
+external cron entry invoking `lingua:webhook:flush`; no such invocation belongs
+to the normal message flow.
 
 ---
 
