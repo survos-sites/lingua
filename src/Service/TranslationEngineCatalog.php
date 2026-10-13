@@ -58,7 +58,7 @@ final readonly class TranslationEngineCatalog
         if ($this->isWorker($engine)) {
             $meta = $this->profiles[$engine];
         } else {
-            if (!in_array($engine, $this->translators->names(), true)) { throw new \InvalidArgumentException('Unknown engine "'.$engine.'". Configured: '.implode(', ', $this->names())); }
+            if (!in_array($engine, $this->translators->names(), true)) { throw new \InvalidArgumentException('Unknown engine "'.$engine.'". Configured engines: '.implode(', ', $this->names())); }
             $meta = array_replace($this->translators->by($engine)->capabilities()->meta, $this->profiles[$engine] ?? []);
         }
         return ['engine' => $engine, 'provider' => $meta['provider'] ?? null, 'model' => $meta['model'] ?? null, 'revision' => $meta['revision'] ?? null, 'profileVersion' => $meta['profileVersion'] ?? null];

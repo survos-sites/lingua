@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Pin the FrankenPHP 1.13 security release; rebuild with --pull for PHP image updates.
-ARG FRANKENPHP_VERSION=1.13.0
+ARG FRANKENPHP_VERSION=1.13.1
 ARG PHP_VERSION=8.5
 
 # ---- base: OS packages + PHP extensions FrankenPHP needs to run this app.

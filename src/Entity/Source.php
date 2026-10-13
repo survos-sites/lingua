@@ -12,7 +12,8 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Survos\CoreBundle\Entity\RouteParametersInterface;
-use Survos\CoreBundle\Entity\RouteParametersTrait;
+use Survos\FieldBundle\Entity\RouteIdentityTrait;
+use Survos\FieldBundle\Attribute\RouteIdentity;
 use Survos\FieldBundle\Attribute\EntityMeta;
 use Survos\FieldBundle\Attribute\Field;
 use Survos\FieldBundle\Enum\Widget;
@@ -36,11 +37,11 @@ use Symfony\Component\Serializer\Attribute\Groups;
     label: 'Sources',
     description: 'Original source strings submitted for translation.'
 )]
+#[RouteIdentity(field: 'id', key: 'sourceId')]
 class Source implements RouteParametersInterface, \Stringable
 {
-    use RouteParametersTrait;
+    use RouteIdentityTrait;
 
-    const UNIQUE_PARAMETERS=['sourceId' => 'id'];
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]

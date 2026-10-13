@@ -101,8 +101,12 @@ when@dev:
 
 when@test:
     parameters:
+        env(DEEPL_API_KEY): test-placeholder
         translation.engine_profiles:
             <<: *translation_profiles
+            deepl:
+                provider: deepl
+                languagePairs: { en: [es, fr], es: [en], fr: [en] }
             euronano-tiny-v1:
                 dispatch: worker
                 provider: ai-tools
