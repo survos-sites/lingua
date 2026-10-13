@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-# FrankenPHP 2 doesn't exist yet -- latest stable is on the 1.x line. Floating on
-# 1 still gets patch releases on the current PHP 8.5 build.
-ARG FRANKENPHP_VERSION=1
+# Pin the FrankenPHP 1.13 security release; rebuild with --pull for PHP image updates.
+ARG FRANKENPHP_VERSION=1.13.0
 ARG PHP_VERSION=8.5
 
 # ---- base: OS packages + PHP extensions FrankenPHP needs to run this app.
