@@ -52,6 +52,9 @@ security:
         - { path: ^/babel, roles: PUBLIC_ACCESS }
         - { path: '^/batch-translate$', roles: PUBLIC_ACCESS }
 
+        # Public landing page; the dashboard lives at /dashboard behind the catch-all.
+        - { path: '^/$', roles: PUBLIC_ACCESS }
+
         # Uptime checks and monitoring, hit with no credentials by design.
         - { path: ^/health, roles: PUBLIC_ACCESS }
         - { path: '^/status\.json$', roles: PUBLIC_ACCESS }

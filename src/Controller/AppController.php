@@ -156,6 +156,14 @@ final class AppController extends AbstractController
     }
 
     #[Route('/', name: 'app_homepage')]
+    public function home(): Response
+    {
+        return $this->render('app/home.html.twig', [
+            'locales' => $this->enabledLocales,
+        ]);
+    }
+
+    #[Route('/dashboard', name: 'app_dashboard')]
     #[Route('/admin/charts', name: 'admin_app_charts')]
     public function charts(): Response
     {

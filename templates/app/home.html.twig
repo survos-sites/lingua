@@ -1,0 +1,25 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Lingua Translation Server{% endblock %}
+
+{% block body %}
+    <div class="container-xl py-4">
+        <h1 class="display-6">Lingua</h1>
+        <p class="lead">
+            A translation server for the Survos platform. Source strings are translated once,
+            cached by hash, and shared across every site that asks for them.
+        </p>
+        <p>
+            Enabled locales:
+            {% for locale in locales %}<span class="badge bg-blue-lt me-1">{{ locale }}</span>{% endfor %}
+        </p>
+        <div class="mt-4">
+            {% if app.user %}
+                <a class="btn btn-primary" href="{{ path('app_dashboard') }}">Dashboard</a>
+            {% else %}
+                <a class="btn btn-primary" href="{{ path('app_login') }}">Sign in</a>
+                <a class="btn btn-outline-primary" href="{{ path('app_register') }}">Register</a>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

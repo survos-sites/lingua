@@ -46,7 +46,7 @@ final class AppMenu
     {
         $menu = $event->getMenu();
 
-        $this->add($menu, 'app_homepage', label: 'Dashboard', icon: 'dashboard');
+        $this->add($menu, 'app_dashboard', label: 'Dashboard', icon: 'dashboard');
 
         $browseMenu = $this->addSubmenu($menu, 'Browse', icon: 'list');
         foreach ($this->entityMetaRegistry->getByGroup('Translation') as $entityMeta) {
