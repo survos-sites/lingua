@@ -4112,6 +4112,47 @@
                                                     "default": null,
                                                     "description": "Name or DSN of the transport that stores the messages inside the current database transaction; consume that transport to forward them to this one. A value that is not the name of a configured transport is a DSN, used to create the \"orders.outbox\" transport for an \"orders\" transport."
                                                 },
+                                                "inbox": {
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/$defs/types/object_null",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "$ref": "#/$defs/types/boolean",
+                                                                    "default": false
+                                                                },
+                                                                "connection": {
+                                                                    "$ref": "#/$defs/types/scalar",
+                                                                    "default": null,
+                                                                    "description": "Name of the Doctrine DBAL connection of that transaction, the default connection when not set."
+                                                                },
+                                                                "table_name": {
+                                                                    "$ref": "#/$defs/types/scalar",
+                                                                    "default": "messenger_inbox"
+                                                                },
+                                                                "retention": {
+                                                                    "$ref": "#/$defs/types/integer",
+                                                                    "minimum": 1,
+                                                                    "default": 604800,
+                                                                    "description": "Number of seconds a record is kept, which must exceed the time the transport can take to redeliver a message."
+                                                                }
+                                                            },
+                                                            "additionalProperties": false
+                                                        },
+                                                        {
+                                                            "type": [
+                                                                "boolean"
+                                                            ]
+                                                        }
+                                                    ],
+                                                    "default": {
+                                                        "enabled": false,
+                                                        "connection": null,
+                                                        "table_name": "messenger_inbox",
+                                                        "retention": 604800
+                                                    },
+                                                    "description": "Records the handled messages in a database table, in the transaction of their handlers, so that a redelivered message is not handled twice. Needs the \"identity_stamps\" option and a middleware that runs the handlers in a transaction."
+                                                },
                                                 "retry_strategy": {
                                                     "anyOf": [
                                                         {
@@ -4169,6 +4210,72 @@
                                                         "max_delay": 0,
                                                         "jitter": 0.1
                                                     }
+                                                },
+                                                "cooldown_strategy": {
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/$defs/types/object_null",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "$ref": "#/$defs/types/boolean",
+                                                                    "default": false
+                                                                },
+                                                                "service": {
+                                                                    "$ref": "#/$defs/types/scalar",
+                                                                    "default": null,
+                                                                    "description": "Service id to override the cooldown strategy entirely."
+                                                                },
+                                                                "failure_threshold": {
+                                                                    "$ref": "#/$defs/types/integer",
+                                                                    "minimum": 1,
+                                                                    "default": 5,
+                                                                    "description": "Number of failures in a row that start a cooldown."
+                                                                },
+                                                                "delay": {
+                                                                    "$ref": "#/$defs/types/integer",
+                                                                    "minimum": 0,
+                                                                    "default": 1000,
+                                                                    "description": "Duration in ms of the first cooldown (or the initial value when multiplier is used)."
+                                                                },
+                                                                "multiplier": {
+                                                                    "$ref": "#/$defs/types/number",
+                                                                    "minimum": 1,
+                                                                    "default": 2,
+                                                                    "description": "If greater than 1, the cooldown will grow exponentially for each further failure in a row: this delay = (delay * (multiplier ^ (failures - failure_threshold)))."
+                                                                },
+                                                                "max_delay": {
+                                                                    "$ref": "#/$defs/types/integer",
+                                                                    "minimum": 0,
+                                                                    "default": 60000,
+                                                                    "description": "Max duration in ms of a cooldown (0 = infinite)."
+                                                                },
+                                                                "jitter": {
+                                                                    "$ref": "#/$defs/types/number",
+                                                                    "minimum": 0,
+                                                                    "maximum": 1,
+                                                                    "default": 0.1,
+                                                                    "description": "Randomness to apply to the duration (between 0 and 1)."
+                                                                }
+                                                            },
+                                                            "additionalProperties": false
+                                                        },
+                                                        {
+                                                            "type": [
+                                                                "string",
+                                                                "boolean"
+                                                            ]
+                                                        }
+                                                    ],
+                                                    "default": {
+                                                        "enabled": false,
+                                                        "service": null,
+                                                        "failure_threshold": 5,
+                                                        "delay": 1000,
+                                                        "multiplier": 2,
+                                                        "max_delay": 60000,
+                                                        "jitter": 0.1
+                                                    },
+                                                    "description": "Stops consuming this transport for a while after its messages fail. With the default strategy, each worker counts its own failures."
                                                 },
                                                 "rate_limiter": {
                                                     "$ref": "#/$defs/types/scalar",
@@ -6407,9 +6514,13 @@
                                     "$ref": "#/$defs/types/scalar",
                                     "description": "An enabled authenticator name or a service id that implements \"Symfony\\Component\\Security\\Http\\EntryPoint\\AuthenticationEntryPointInterface\"."
                                 },
+                                "entry_point_path": {
+                                    "$ref": "#/$defs/types/scalar",
+                                    "description": "A path, an absolute URL or a route name to redirect anonymous users to when they need to authenticate."
+                                },
                                 "re_authentication_entry_point": {
                                     "$ref": "#/$defs/types/scalar",
-                                    "description": "An enabled authenticator name or a service id implementing \"Symfony\\Component\\Security\\Http\\EntryPoint\\ReAuthenticationEntryPointInterface\", asking an already authenticated user to prove possession of their credentials again when IS_AUTHENTICATED_RECENTLY or IS_AUTHENTICATED_VERY_RECENTLY is denied. Defaults to the firewall entry point when that one implements it."
+                                    "description": "An enabled authenticator name or a service id implementing \"Symfony\\Component\\Security\\Http\\EntryPoint\\ReAuthenticationEntryPointInterface\", started when the vote denying access asks for a re-authentication. Defaults to the firewall entry point when it implements this interface."
                                 },
                                 "provider": {
                                     "$ref": "#/$defs/types/scalar"
@@ -6846,12 +6957,17 @@
                                         },
                                         "provider_uri": {
                                             "$ref": "#/$defs/types/scalar",
-                                            "description": "The OIDC Issuer URL (e.g. \"https://accounts.example.com\"). Used for .well-known/openid-configuration discovery."
+                                            "description": "The OIDC Issuer URL (e.g. \"https://accounts.example.com\"). Used for .well-known/openid-configuration discovery unless \"discovery_uri\" is set."
+                                        },
+                                        "discovery_uri": {
+                                            "$ref": "#/$defs/types/scalar",
+                                            "default": null,
+                                            "description": "Absolute URL of the discovery document. The \"issuer\" it announces is still checked against \"provider_uri\"."
                                         },
                                         "http_client": {
                                             "$ref": "#/$defs/types/scalar",
                                             "default": null,
-                                            "description": "The id of the HttpClient service every call to the provider is made with: discovery, JWKS, token and UserInfo endpoints. Defaults to \"http_client\". A scoped client must scope every host the provider announces, not only the issuer."
+                                            "description": "The id of the HttpClient service every call to the provider is made with: discovery, JWKS, token and UserInfo endpoints. Defaults to \"http_client\". A scoped client must scope the discovery host and every host the provider announces."
                                         },
                                         "client_id": {
                                             "$ref": "#/$defs/types/scalar",
@@ -7052,7 +7168,7 @@
                                                         },
                                                         "id": {
                                                             "$ref": "#/$defs/types/scalar",
-                                                            "description": "The id of a service implementing \"ClientAuthenticationInterface\", for a scheme Symfony does not ship. The method it reports is only known once it is built, so the rules a public client cannot bend are then checked on the first request to this firewall instead of while the container compiles."
+                                                            "description": "The id of a service implementing \"ClientAuthenticationInterface\", for a scheme Symfony does not ship. The method it reports is only known once it is built, so the rules a public client cannot bend are then checked when a login starts on this firewall instead of while the container compiles."
                                                         }
                                                     },
                                                     "additionalProperties": false
@@ -8183,7 +8299,7 @@
                                                 "resource": {
                                                     "$ref": "#/$defs/types/scalar",
                                                     "default": null,
-                                                    "description": "The resource identifier of this firewall: an HTTPS URL, without a fragment (e.g. \"https://api.example.com\" or \"https://example.com/api\"). Its path component is inserted after the well-known path, as RFC 9728, Section 3.1 prescribes, so that one host can serve the metadata of several protected resources. Defaults to the origin the document is served from, which is what a firewall covering a whole application wants."
+                                                    "description": "The resource identifier of this firewall: an HTTPS URL without a fragment (e.g. \"https://example.com/api\"), read when the container is compiled, or a path (e.g. \"/api\") resolved against the origin of the request. Its path is inserted after the well-known path, as RFC 9728, Section 3.1 prescribes. Defaults to the origin of the request, which is what a firewall covering a whole application wants."
                                                 },
                                                 "authorization_servers": {
                                                     "anyOf": [
@@ -9840,19 +9956,8 @@
                     },
                     "routing": {
                         "$ref": "#/$defs/types/object_null",
-                        "properties": {
-                            "routes_to_expose": {
-                                "$ref": "#/$defs/types/array_null",
-                                "items": {
-                                    "$ref": "#/$defs/types/scalar"
-                                },
-                                "description": "Route names or regex patterns (e.g. \"/^app_/\") to expose to the JS path() generator."
-                            }
-                        },
-                        "additionalProperties": false,
-                        "default": {
-                            "routes_to_expose": []
-                        }
+                        "deprecated": true,
+                        "description": "Deprecated since survos/js-twig-bundle 2.43: The \"routing\" option does nothing: browser path() comes from symfony/ux-router. Expose routes with \"ux_router.routes\" or the route \"expose\" option, then remove this key."
                     },
                     "stores": {
                         "$ref": "#/$defs/types/array_null",
@@ -10585,6 +10690,28 @@
                         "$ref": "#/$defs/types/boolean",
                         "default": false,
                         "description": "Build the BREADCRUMB slot from the page's entities: each object option whose class has a #[RouteMeta(entity:, purpose: Show)] route becomes a crumb. See BreadcrumbMenuSubscriber."
+                    },
+                    "menu_renderer": {
+                        "anyOf": [
+                            {
+                                "enum": [
+                                    "knp",
+                                    "survos"
+                                ]
+                            },
+                            {
+                                "$ref": "#/$defs/types/param"
+                            }
+                        ],
+                        "default": "knp",
+                        "description": "How tabler_menu() draws menus. knp: KnpMenu templates (@SurvosTabler/menu/*). survos: survos/menu-bundle themes (@SurvosTabler/menu_theme/*); register SurvosMenuBundle first. Same listeners either way."
+                    },
+                    "menu_themes": {
+                        "$ref": "#/$defs/types/object_null",
+                        "additionalProperties": {
+                            "$ref": "#/$defs/types/scalar"
+                        },
+                        "description": "With menu_renderer: survos, a template per slot holding only the blocks the app changes, e.g. SIDEBAR: \"menu/sidebar.html.twig\"."
                     },
                     "menu_options": {
                         "$ref": "#/$defs/types/object_null",
@@ -11749,6 +11876,38 @@
                         "$ref": "#/$defs/types/boolean",
                         "default": false,
                         "description": "Ignore error when an icon is not found.\nSet to 'true' to fail silently."
+                    }
+                },
+                "additionalProperties": false
+            },
+            "ux_router": {
+                "$ref": "#/$defs/types/object_null",
+                "properties": {
+                    "dump_directory": {
+                        "$ref": "#/$defs/types/scalar",
+                        "default": "%kernel.project_dir%/var/routes",
+                        "description": "The directory where routes and TypeScript types are dumped."
+                    },
+                    "dump_typescript": {
+                        "$ref": "#/$defs/types/boolean",
+                        "default": true,
+                        "description": "Control whether TypeScript types are dumped alongside routes. Disable this if you do not use TypeScript (e.g. in production when using AssetMapper)."
+                    },
+                    "routes": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/$defs/types/array_null",
+                                "items": {
+                                    "$ref": "#/$defs/types/scalar"
+                                }
+                            },
+                            {
+                                "type": [
+                                    "string"
+                                ]
+                            }
+                        ],
+                        "description": "Route name patterns to expose to JavaScript. Prefix with a `!` to exclude a pattern. Supports wildcards (e.g., `app_*`, `!app_admin_*`). The `expose` route option takes precedence over patterns."
                     }
                 },
                 "additionalProperties": false
@@ -14308,6 +14467,9 @@
         "ux_icons": {
             "$ref": "#/$defs/nodes/ux_icons"
         },
+        "ux_router": {
+            "$ref": "#/$defs/nodes/ux_router"
+        },
         "validation": {
             "$ref": "#/$defs/nodes/validation"
         },
@@ -14481,6 +14643,9 @@
                 },
                 "ux_icons": {
                     "$ref": "#/$defs/nodes/ux_icons"
+                },
+                "ux_router": {
+                    "$ref": "#/$defs/nodes/ux_router"
                 },
                 "validation": {
                     "$ref": "#/$defs/nodes/validation"
@@ -14656,6 +14821,9 @@
                 "ux_icons": {
                     "$ref": "#/$defs/nodes/ux_icons"
                 },
+                "ux_router": {
+                    "$ref": "#/$defs/nodes/ux_router"
+                },
                 "validation": {
                     "$ref": "#/$defs/nodes/validation"
                 },
@@ -14825,6 +14993,9 @@
                 },
                 "ux_icons": {
                     "$ref": "#/$defs/nodes/ux_icons"
+                },
+                "ux_router": {
+                    "$ref": "#/$defs/nodes/ux_router"
                 },
                 "validation": {
                     "$ref": "#/$defs/nodes/validation"
