@@ -1,4 +1,4 @@
-# Local Harvest subscriber only; all other completion deliveries remain HTTP webhooks.
+# Harvest completion transport; subscriber selection is wired in services.yaml.
 when@dev:
     parameters:
         env(LINGUA_RESULTS_DSN): 'phpamqplib://guest:guest@localhost:5672/harvest'
@@ -21,3 +21,25 @@ when@dev:
                                 durable: true
                                 bindings:
                                     - { routing_key: harvest.local }
+
+when@prod:
+    framework:
+        messenger:
+            transports:
+                lingua_results:
+                    # The receiving app's vhost, rather than Lingua's transition vhost.
+                    dsn: '%env(LINGUA_RESULTS_DSN)%'
+                    serializer: messenger.transport.interop_serializer
+                    options:
+                        confirm_enabled: true
+                        delay: { durable: true }
+                        exchange:
+                            name: lingua.results
+                            type: direct
+                            durable: true
+                            default_publish_routing_key: harvest.prod
+                        queues:
+                            harvest.lingua.results:
+                                durable: true
+                                bindings:
+                                    - { routing_key: harvest.prod }

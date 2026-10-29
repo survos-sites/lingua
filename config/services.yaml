@@ -62,6 +62,16 @@ services:
             $signer: '@webhook.signer'
             $logger: '@logger'
 
+when@prod:
+    services:
+        App\Service\TranslationNotifier:
+            autowire: true
+            autoconfigure: true
+            arguments:
+                # Enable after Harvest's result consumer is deployed. Unset keeps HTTP delivery.
+                $integrationCallbackUrl: '%env(default::LINGUA_RESULTS_CALLBACK_URL)%'
+                $integrationSender: '@messenger.transport.lingua_results'
+
 when@dev:
     services:
         App\Service\TranslationNotifier:

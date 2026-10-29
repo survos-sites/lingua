@@ -56,7 +56,7 @@ final class TranslationNotifier
         private readonly LoggerInterface $logger,
         #[Autowire('%env(default::LINGUA_WEBHOOK_SECRET)%')]
         private readonly ?string $secret = null,
-        // An exact subscriber URL selects the local AMQP experiment. Other subscribers keep HTTP.
+        // An exact subscriber URL selects AMQP delivery. Other subscribers keep HTTP.
         private readonly ?string $integrationCallbackUrl = null,
         private readonly ?SenderInterface $integrationSender = null,
     ) {
