@@ -9,7 +9,11 @@ use App\Repository\TranslationSubscriptionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
+use Symfony\Component\RemoteEvent\Messenger\ConsumeRemoteEventMessage;
+use Survos\LinguaBundle\Webhook\LinguaWebhookRequestParser;
 use Symfony\Component\RemoteEvent\RemoteEvent;
 use Symfony\Component\Webhook\Messenger\SendWebhookMessage;
 use Symfony\Component\Webhook\Subscriber;
@@ -52,6 +56,9 @@ final class TranslationNotifier
         private readonly LoggerInterface $logger,
         #[Autowire('%env(default::LINGUA_WEBHOOK_SECRET)%')]
         private readonly ?string $secret = null,
+        // An exact subscriber URL selects the local AMQP experiment. Other subscribers keep HTTP.
+        private readonly ?string $integrationCallbackUrl = null,
+        private readonly ?SenderInterface $integrationSender = null,
     ) {
     }
 
@@ -87,7 +94,8 @@ final class TranslationNotifier
      */
     public function flush(string $callbackUrl): int
     {
-        if (($this->secret ?? '') === '') {
+        $integration = null !== $this->integrationCallbackUrl && $callbackUrl === $this->integrationCallbackUrl;
+        if (!$integration && ($this->secret ?? '') === '') {
             // Fail closed, exactly as mediary does: an unsigned webhook is worse than a late
             // one, because the receiver's whole authorisation story is this secret.
             $this->logger->error('LINGUA_WEBHOOK_SECRET is not set — refusing to send unsigned webhook to {url}', [
@@ -104,19 +112,19 @@ final class TranslationNotifier
 
         $now = new \DateTimeImmutable('now');
 
-        $this->bus->dispatch(new SendWebhookMessage(
-            new Subscriber($callbackUrl, $this->secret),
-            new RemoteEvent(
-                self::EVENT_TRANSLATION_COMPLETED,
-                // The id must be stable for THIS delivery and unique across deliveries: it is
-                // signed along with the body, and the receiver logs it. First subscription id
-                // plus count identifies the page exactly, and — unlike a random uuid — a
-                // re-queue of the same page produces the same id, so a duplicate is visibly a
-                // duplicate rather than looking like new work.
-                \sprintf('%d-%d', $pending[0]->id, \count($pending)),
-                $this->payload($pending),
-            ),
-        ));
+        $event = new RemoteEvent(
+            self::EVENT_TRANSLATION_COMPLETED,
+            \sprintf('%d-%d', $pending[0]->id, \count($pending)),
+            $this->payload($pending),
+        );
+        if ($integration) {
+            // The same message WebhookController normally queues in the receiving app.
+            // Send directly through its configured interop transport, without local bus routing.
+            $sender = $this->integrationSender ?? throw new \LogicException('Integration subscriber has no result sender.');
+            $sender->send(new Envelope(new ConsumeRemoteEventMessage(LinguaWebhookRequestParser::WEBHOOK_NAME, $event)));
+        } else {
+            $this->bus->dispatch(new SendWebhookMessage(new Subscriber($callbackUrl, $this->secret), $event));
+        }
 
         foreach ($pending as $subscription) {
             $subscription->notifiedAt = $now;

@@ -1,0 +1,23 @@
+# Local Harvest subscriber only; all other completion deliveries remain HTTP webhooks.
+when@dev:
+    parameters:
+        env(LINGUA_RESULTS_DSN): 'phpamqplib://guest:guest@localhost:5672/harvest'
+    framework:
+        messenger:
+            transports:
+                lingua_results:
+                    dsn: '%env(LINGUA_RESULTS_DSN)%'
+                    serializer: messenger.transport.interop_serializer
+                    options:
+                        confirm_enabled: true
+                        delay: { durable: true }
+                        exchange:
+                            name: lingua.results
+                            type: direct
+                            durable: true
+                            default_publish_routing_key: harvest.local
+                        queues:
+                            harvest.lingua.results:
+                                durable: true
+                                bindings:
+                                    - { routing_key: harvest.local }

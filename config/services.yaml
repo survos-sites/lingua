@@ -63,6 +63,13 @@ services:
             $logger: '@logger'
 
 when@dev:
+    services:
+        App\Service\TranslationNotifier:
+            autowire: true
+            autoconfigure: true
+            arguments:
+                $integrationCallbackUrl: 'https://harvest.wip/webhook/lingua'
+                $integrationSender: '@messenger.transport.lingua_results'
     parameters:
         translation.engine_profiles:
             <<: *translation_profiles
