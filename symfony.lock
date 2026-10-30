@@ -252,14 +252,17 @@
     "survos/simple-datatables-bundle": {
         "version": "1.5.472"
     },
-    "survos/state-bundle": {
-        "version": "dev-main"
-    },
     "survos/tabler-bundle": {
         "version": "2.7.23"
     },
     "survos/translator-bundle": {
         "version": "dev-main"
+    },
+    "survos/workflow-extras-bundle": {
+        "version": "2.45.5"
+    },
+    "survos/workflow-messenger-bundle": {
+        "version": "2.43.23"
     },
     "symfony/asset-mapper": {
         "version": "7.2",

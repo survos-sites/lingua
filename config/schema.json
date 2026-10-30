@@ -10104,147 +10104,6 @@
                 },
                 "additionalProperties": false
             },
-            "survos_state": {
-                "$ref": "#/$defs/types/object_null",
-                "properties": {
-                    "routes_enabled": {
-                        "$ref": "#/$defs/types/boolean",
-                        "default": true,
-                        "description": "Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off."
-                    },
-                    "route_prefix": {
-                        "$ref": "#/$defs/types/scalar",
-                        "default": "/state",
-                        "description": "URL prefix applied to all routes from this bundle."
-                    },
-                    "locale_prefix": {
-                        "$ref": "#/$defs/types/boolean",
-                        "default": false,
-                        "description": "Prepend {_locale} (constrained to kernel.enabled_locales) to this bundle's route prefix, e.g. /{_locale}/f instead of /f -- for bundles whose routes are meant to be shared/bookmarked, so the URL itself carries the locale instead of a query param."
-                    },
-                    "queue_prefix": {
-                        "$ref": "#/$defs/types/scalar",
-                        "default": ""
-                    },
-                    "base_layout": {
-                        "$ref": "#/$defs/types/scalar",
-                        "default": "base.html.twig"
-                    },
-                    "enable_dynamic_routing": {
-                        "$ref": "#/$defs/types/boolean",
-                        "default": true,
-                        "description": "Inert as of 2026-09-12: transition routing comes from AsyncQueueLocator::stamps() at the dispatch site, not from middleware. See SurvosStateBundle::loadExtension()."
-                    },
-                    "batch_size": {
-                        "$ref": "#/$defs/types/integer",
-                        "default": 100,
-                        "description": "Default size for #[Transition(batch: true-ish)] groups; a transition's own batch: N wins"
-                    },
-                    "batch_idle_timeout": {
-                        "$ref": "#/$defs/types/integer",
-                        "default": 5,
-                        "description": "Seconds of worker idleness after which a partial batch is flushed"
-                    },
-                    "batch_enabled": {
-                        "$ref": "#/$defs/types/boolean",
-                        "default": true,
-                        "description": "Off: #[Transition(batch: N)] transitions travel as plain TransitionMessages, one at a time, exactly as if unbatched. Env-able: '%env(bool:APP_BATCH)%'"
-                    },
-                    "allow_force_place": {
-                        "$ref": "#/$defs/types/scalar",
-                        "default": "%kernel.debug%"
-                    },
-                    "workflow_paths": {
-                        "$ref": "#/$defs/types/array_null",
-                        "items": {
-                            "$ref": "#/$defs/types/scalar"
-                        },
-                        "default": [
-                            "%kernel.project_dir%/src/Workflow"
-                        ]
-                    },
-                    "async_transport_dsn": {
-                        "$ref": "#/$defs/types/scalar",
-                        "default": "doctrine://default"
-                    },
-                    "queue_driver": {
-                        "anyOf": [
-                            {
-                                "enum": [
-                                    "doctrine",
-                                    "rabbitmq"
-                                ]
-                            },
-                            {
-                                "$ref": "#/$defs/types/param"
-                            }
-                        ],
-                        "default": "doctrine"
-                    },
-                    "max_priority": {
-                        "$ref": "#/$defs/types/integer_null",
-                        "minimum": 1,
-                        "maximum": 255,
-                        "default": null
-                    },
-                    "prefetch_count": {
-                        "$ref": "#/$defs/types/integer_null",
-                        "minimum": 1,
-                        "default": null
-                    },
-                    "queue_options": {
-                        "$ref": "#/$defs/types/object_null",
-                        "additionalProperties": {
-                            "$ref": "#/$defs/types/object_null",
-                            "properties": {
-                                "max_priority": {
-                                    "$ref": "#/$defs/types/integer",
-                                    "minimum": 1,
-                                    "maximum": 255
-                                },
-                                "prefetch_count": {
-                                    "$ref": "#/$defs/types/integer",
-                                    "minimum": 1
-                                }
-                            },
-                            "additionalProperties": false
-                        }
-                    },
-                    "retry_strategy": {
-                        "$ref": "#/$defs/types/object_null",
-                        "properties": {
-                            "max_retries": {
-                                "$ref": "#/$defs/types/integer",
-                                "minimum": 0,
-                                "default": 3
-                            },
-                            "delay": {
-                                "$ref": "#/$defs/types/integer",
-                                "minimum": 0,
-                                "default": 1000
-                            },
-                            "multiplier": {
-                                "$ref": "#/$defs/types/number",
-                                "minimum": 1,
-                                "default": 2
-                            },
-                            "max_delay": {
-                                "$ref": "#/$defs/types/integer",
-                                "minimum": 0,
-                                "default": 0
-                            }
-                        },
-                        "additionalProperties": false,
-                        "default": {
-                            "max_retries": 3,
-                            "delay": 1000,
-                            "multiplier": 2,
-                            "max_delay": 0
-                        }
-                    }
-                },
-                "additionalProperties": false
-            },
             "survos_tabler": {
                 "$ref": "#/$defs/types/object_null",
                 "properties": {
@@ -10818,6 +10677,47 @@
                             "additionalProperties": false
                         },
                         "description": "Configure one or more named engines. Examples (commented-out):\n\n  survos_translator:\n    default_engine: libre_local\n    engines:\n      # LibreTranslate (no API key required by default)\n      # libre_local:\n      #   type: libre\n      #   base_uri: 'http://localhost:5000'\n      #   api_key: null\n\n      # DeepL (API key REQUIRED; host inferred from plan when base_uri is omitted)\n      # deepl_free:\n      #   type: deepl\n      #   plan: free            # or \"pro\"\n      #   api_key: '%env(DEEPL_API_KEY)%'\n\n      # Google Cloud Translate (API key REQUIRED; host inferred when base_uri is omitted)\n      # google:\n      #   type: google\n      #   api_key: '%env(GOOGLE_TRANSLATE_KEY)%'\n\n      # Bing (API key REQUIRED; region often required; host can be inferred in the engine)\n      # bing_global:\n      #   type: bing\n      #   region: 'global'\n      #   api_key: '%env(BING_TRANSLATOR_KEY)%'"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "survos_workflow_extras": {
+                "$ref": "#/$defs/types/object_null",
+                "properties": {
+                    "routes_enabled": {
+                        "$ref": "#/$defs/types/boolean",
+                        "default": true,
+                        "description": "Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off."
+                    },
+                    "route_prefix": {
+                        "$ref": "#/$defs/types/scalar",
+                        "default": "/workflow",
+                        "description": "URL prefix applied to all routes from this bundle."
+                    },
+                    "locale_prefix": {
+                        "$ref": "#/$defs/types/boolean",
+                        "default": false,
+                        "description": "Prepend {_locale} (constrained to kernel.enabled_locales) to this bundle's route prefix, e.g. /{_locale}/f instead of /f -- for bundles whose routes are meant to be shared/bookmarked, so the URL itself carries the locale instead of a query param."
+                    }
+                },
+                "additionalProperties": false
+            },
+            "survos_workflow_messenger": {
+                "$ref": "#/$defs/types/object_null",
+                "properties": {
+                    "subject_store": {
+                        "$ref": "#/$defs/types/scalar",
+                        "default": null,
+                        "description": "Service implementing SubjectStoreInterface; defaults to the Doctrine store when DoctrineBundle is installed."
+                    },
+                    "default_transport": {
+                        "$ref": "#/$defs/types/scalar",
+                        "default": null
+                    },
+                    "lock_factory": {
+                        "$ref": "#/$defs/types/scalar",
+                        "default": "lock.factory",
+                        "description": "LockFactory serializing transitions per subject across workers. Use a store shared by every worker host."
                     }
                 },
                 "additionalProperties": false
@@ -14437,14 +14337,17 @@
         "survos_simple_datatables": {
             "$ref": "#/$defs/nodes/survos_simple_datatables"
         },
-        "survos_state": {
-            "$ref": "#/$defs/nodes/survos_state"
-        },
         "survos_tabler": {
             "$ref": "#/$defs/nodes/survos_tabler"
         },
         "survos_translator": {
             "$ref": "#/$defs/nodes/survos_translator"
+        },
+        "survos_workflow_extras": {
+            "$ref": "#/$defs/nodes/survos_workflow_extras"
+        },
+        "survos_workflow_messenger": {
+            "$ref": "#/$defs/nodes/survos_workflow_messenger"
         },
         "translation": {
             "$ref": "#/$defs/nodes/translation"
@@ -14614,14 +14517,17 @@
                 "survos_simple_datatables": {
                     "$ref": "#/$defs/nodes/survos_simple_datatables"
                 },
-                "survos_state": {
-                    "$ref": "#/$defs/nodes/survos_state"
-                },
                 "survos_tabler": {
                     "$ref": "#/$defs/nodes/survos_tabler"
                 },
                 "survos_translator": {
                     "$ref": "#/$defs/nodes/survos_translator"
+                },
+                "survos_workflow_extras": {
+                    "$ref": "#/$defs/nodes/survos_workflow_extras"
+                },
+                "survos_workflow_messenger": {
+                    "$ref": "#/$defs/nodes/survos_workflow_messenger"
                 },
                 "translation": {
                     "$ref": "#/$defs/nodes/translation"
@@ -14791,14 +14697,17 @@
                 "survos_simple_datatables": {
                     "$ref": "#/$defs/nodes/survos_simple_datatables"
                 },
-                "survos_state": {
-                    "$ref": "#/$defs/nodes/survos_state"
-                },
                 "survos_tabler": {
                     "$ref": "#/$defs/nodes/survos_tabler"
                 },
                 "survos_translator": {
                     "$ref": "#/$defs/nodes/survos_translator"
+                },
+                "survos_workflow_extras": {
+                    "$ref": "#/$defs/nodes/survos_workflow_extras"
+                },
+                "survos_workflow_messenger": {
+                    "$ref": "#/$defs/nodes/survos_workflow_messenger"
                 },
                 "translation": {
                     "$ref": "#/$defs/nodes/translation"
@@ -14964,14 +14873,17 @@
                 "survos_simple_datatables": {
                     "$ref": "#/$defs/nodes/survos_simple_datatables"
                 },
-                "survos_state": {
-                    "$ref": "#/$defs/nodes/survos_state"
-                },
                 "survos_tabler": {
                     "$ref": "#/$defs/nodes/survos_tabler"
                 },
                 "survos_translator": {
                     "$ref": "#/$defs/nodes/survos_translator"
+                },
+                "survos_workflow_extras": {
+                    "$ref": "#/$defs/nodes/survos_workflow_extras"
+                },
+                "survos_workflow_messenger": {
+                    "$ref": "#/$defs/nodes/survos_workflow_messenger"
                 },
                 "translation": {
                     "$ref": "#/$defs/nodes/translation"

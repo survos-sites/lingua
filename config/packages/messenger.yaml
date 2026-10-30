@@ -58,32 +58,36 @@ framework:
 
         routing:
             # Route your messages to the transports
-#             'Survos\StateBundle\Message\TransitionMessage': async
             'App\Message\FlushTranslationNotificationsMessage': translation_notifications
             'Symfony\Component\Webhook\Messenger\SendWebhookMessage': webhook
-            # Batched translation. Shares target.translate with the per-Target
-            # TransitionMessage path so ONE worker drains both — which matters right now,
-            # because ~62k TransitionMessages from the 2026-08-17 push are still in that
-            # queue and will keep arriving one string at a time until they clear.
-            #
-            # state-bundle auto-registers target.translate (doctrine://default) from the
-            # `async: true` on TRANSITION_TRANSLATE; naming it here just routes the new
-            # message to the same place.
+            # Batched translation. Shares target.translate with the per-Target translate
+            # transition (TargetWorkflowInterface::TRANSITION_TRANSLATE declares
+            # `transport: target.translate`), so ONE worker drains both.
             'App\Message\TranslateBatchMessage': target.translate
 
 
-# NOTE: overriding `async` here would do nothing for the translate path. state-bundle
-# auto-registers a per-transition transport -- `target.translate`, dsn doctrine://default --
-# and AsyncQueueLocator::stamps() routes TransitionMessage there, overriding any transport
-# stamp built from the request payload. In the test env doctrine://default is lingua_test, so
-# dispatched jobs land in its messenger_messages table with auto_setup creating it; that is
-# what TranslateBatchMethodTest counts.
+# target.translate is declared per environment below: RabbitMQ in prod, Doctrine in dev and
+# test. In the test env doctrine://default is lingua_test, so dispatched jobs land in its
+# messenger_messages table with auto_setup creating it; that is what TranslateBatchMethodTest
+# counts. Overriding `async` here would not affect the translate path.
 #
 # when@test:
 #    framework:
 #        messenger:
 #            transports:
 #                async: 'in-memory://'
+
+when@prod:
+    framework:
+        messenger:
+            transports:
+                # The queue behind the translate transition and TranslateBatchMessage. RabbitMQ,
+                # one queue, same arrangement as `async` above (the durable delay queue is why).
+                target.translate:
+                    dsn: '%env(MESSENGER_TRANSPORT_DSN_RABBITMQ)%/target.translate'
+                    options:
+                        delay:
+                            durable: true
 
 # --- Native translation worker (dev/test only; see doc/TRANSLATION_WORKER.md) ---
 # Worker profiles (dispatch: worker in services.yaml) are dev-only, so these transports and
@@ -93,6 +97,9 @@ when@dev:
     framework:
         messenger:
             transports:
+                # Doctrine in dev: a queued job is a row you can inspect (the local podman broker
+                # has no `lingua` vhost).
+                target.translate: 'doctrine://default?queue_name=target.translate'
                 # Send-only: plain-JSON TranslationJobRequest, published mandatory + confirmed to the
                 # profile's routingKey. Broker credentials come from TRANSLATION_WORKER_AMQP_DSN.
                 translation_jobs: 'translation-jobs://'
@@ -127,6 +134,7 @@ when@test:
     framework:
         messenger:
             transports:
+                target.translate: 'doctrine://default?queue_name=target.translate'
                 translation_jobs: 'translation-jobs://'
                 translation_results: 'in-memory://'
             routing:

@@ -19,7 +19,7 @@ final class PublicTranslationApiTest extends WebTestCase
         $client = self::createClient();
         $client->disableReboot();
         $em = self::getContainer()->get(EntityManagerInterface::class);
-        $em->getConnection()->beginTransaction();
+        $source = $target = null;
 
         try {
             $source = new Source('Public API probe '.bin2hex(random_bytes(8)), 'en');
@@ -53,7 +53,14 @@ final class PublicTranslationApiTest extends WebTestCase
                 self::assertSame($source->hash, $data['hash']);
             }
         } finally {
-            $em->getConnection()->rollBack();
+            // Not an outer transaction: the workflow kickoff refuses to run inside one.
+            if ($target !== null) {
+                $em->remove($target);
+            }
+            if ($source !== null) {
+                $em->remove($source);
+            }
+            $em->flush();
         }
     }
 

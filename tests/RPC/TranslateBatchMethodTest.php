@@ -14,13 +14,13 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * translateBatch -- the write half -- end to end over POST /api/v1.
  *
  * Dispatched jobs are counted in the messenger_messages table, on the target.translate
- * transport (doctrine://default = lingua_test here) that state-bundle registers for the
+ * transport (doctrine://default = lingua_test here) that messenger.yaml declares for the
  * `async: true` translate transition -- so overriding `async` in the test env would have no
  * effect on this path, worth knowing before reaching for in-memory://.
  *
  * NOTE the counts here are MESSAGES, not targets, and since 2026-08-18 those differ: intake
  * dispatches one TranslateBatchMessage per (target locale, chunk of 100) rather than one
- * TransitionMessage per Target. `result.queued` still counts targets. A test that asserts
+ * TransitionRequest per Target. `result.queued` still counts targets. A test that asserts
  * one row per target is asserting the thing the batching removed.
  */
 final class TranslateBatchMethodTest extends WebTestCase
@@ -34,8 +34,8 @@ final class TranslateBatchMethodTest extends WebTestCase
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->em->getConnection()->executeStatement('TRUNCATE target, source RESTART IDENTITY CASCADE');
 
-        // state-bundle auto-registers a per-transition transport (target.translate) on
-        // doctrine://default, which in the test env is lingua_test. auto_setup creates the
+        // messenger.yaml declares the target.translate transport on doctrine://default for the
+        // test env, which is lingua_test. auto_setup creates the
         // table on first dispatch, so it may not exist on a clean database yet.
         $this->em->getConnection()->executeStatement('TRUNCATE messenger_messages RESTART IDENTITY');
     }

@@ -28,7 +28,6 @@ return [
     Survos\TranslatorBundle\SurvosTranslatorBundle::class => ['all' => true],
     Survos\LinguaBundle\SurvosLinguaBundle::class => ['all' => true],
     Survos\BabelBundle\SurvosBabelBundle::class => ['all' => true],
-    Survos\StateBundle\SurvosStateBundle::class => ['all' => true],
     Survos\JsonlBundle\SurvosJsonlBundle::class => ['all' => true],
     Survos\JsTwigBundle\SurvosJsTwigBundle::class => ['all' => true],
     Symfony\UX\Icons\UXIconsBundle::class => ['all' => true],
@@ -47,4 +46,6 @@ return [
     Survos\Grid\SurvosGridBundle::class => ['all' => true],
     Symfony\UX\Router\UXRouterBundle::class => ['all' => true],
     Survos\MenuBundle\SurvosMenuBundle::class => ['all' => true],
+    Survos\WorkflowExtrasBundle\SurvosWorkflowExtrasBundle::class => ['all' => true],
+    Survos\WorkflowMessengerBundle\SurvosWorkflowMessengerBundle::class => ['all' => true],
 ];

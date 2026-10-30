@@ -14,7 +14,6 @@ use Survos\Lingua\Contracts\Dto\BatchRequest;
 use Survos\TranslatorBundle\Contract\TranslatorEngineInterface;
 use Survos\TranslatorBundle\Model\EngineCapabilities;
 use Survos\TranslatorBundle\Service\{TranslatorManager, TranslatorRegistry};
-use Survos\StateBundle\Service\AsyncQueueLocator;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -53,7 +52,7 @@ final class TranslationEngineCatalogTest extends TestCase
         $em->expects(self::never())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
-        $intake = new TranslationIntakeService($em, $this->createStub(SourceRepository::class), $this->createStub(TargetRepository::class), $bus, $this->createStub(NormalizerInterface::class), new NullLogger(), new AsyncQueueLocator([], [], $em), new TranslationEngineSelector([]), $this->catalog());
+        $intake = new TranslationIntakeService($em, $this->createStub(SourceRepository::class), $this->createStub(TargetRepository::class), $bus, $this->createStub(NormalizerInterface::class), new NullLogger(), new TranslationEngineSelector([]), $this->catalog());
         foreach ([['unknown', 'de', 'en'], ['libre', 'sv', 'en'], ['libre', 'de', 'fr']] as [$engine, $source, $target]) {
             $result = $intake->handle(new BatchRequest(source: $source, target: [$target], texts: ['Hallo'], engine: $engine));
             self::assertArrayHasKey('error', $result);

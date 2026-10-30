@@ -58,6 +58,8 @@ final class TranslationResultProcessor
         // Not wrapInTransaction(): that closes the EntityManager on any exception, and a
         // rejected result is routine here — the consumer must keep its EM for the next one.
         $connection = $this->em->getConnection();
+        // Transitions applied in here pass `cascade: none`: the workflow kickoff refuses to run
+        // inside an open transaction, and none of these transitions has a `next` anyway.
         $connection->beginTransaction();
         try {
             $rejection = null;
@@ -125,7 +127,7 @@ final class TranslationResultProcessor
         $received = false;
         foreach ([WF::TRANSITION_RECEIVE, WF::TRANSITION_RECEIVE_IDENTICAL] as $transition) {
             if ($this->targetWorkflow->can($target, $transition)) {
-                $this->targetWorkflow->apply($target, $transition);
+                $this->targetWorkflow->apply($target, $transition, ['cascade' => 'none']);
                 $received = true;
                 break;
             }
@@ -148,7 +150,7 @@ final class TranslationResultProcessor
     private function untranslated(Target $target): string
     {
         if ($this->targetWorkflow->can($target, WF::TRANSITION_REJECT)) {
-            $this->targetWorkflow->apply($target, WF::TRANSITION_REJECT);
+            $this->targetWorkflow->apply($target, WF::TRANSITION_REJECT, ['cascade' => 'none']);
         }
 
         return self::FAILED;

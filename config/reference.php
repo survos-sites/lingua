@@ -2121,33 +2121,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     proxy?: scalar|Param|null, // HTTP proxy override. Empty auto-selects the symfony proxy for a .wip host. // Default: "%env(default::LINGUA_PROXY)%"
  *     callback_url?: scalar|Param|null, // Absolute URL of THIS app's /webhook/lingua endpoint, e.g. https://zm.wip/webhook/lingua. Sent with every push so the server announces translations instead of making us poll with lingua:pull. Empty keeps the polling behaviour. // Default: "%env(default::LINGUA_CALLBACK_URL)%"
  * }
- * @psalm-type SurvosStateConfig = array{
- *     routes_enabled?: bool|Param, // Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off. // Default: true
- *     route_prefix?: scalar|Param|null, // URL prefix applied to all routes from this bundle. // Default: "/state"
- *     locale_prefix?: bool|Param, // Prepend {_locale} (constrained to kernel.enabled_locales) to this bundle's route prefix, e.g. /{_locale}/f instead of /f -- for bundles whose routes are meant to be shared/bookmarked, so the URL itself carries the locale instead of a query param. // Default: false
- *     queue_prefix?: scalar|Param|null, // Default: ""
- *     base_layout?: scalar|Param|null, // Default: "base.html.twig"
- *     enable_dynamic_routing?: bool|Param, // Inert as of 2026-09-12: transition routing comes from AsyncQueueLocator::stamps() at the dispatch site, not from middleware. See SurvosStateBundle::loadExtension(). // Default: true
- *     batch_size?: int|Param, // Default size for #[Transition(batch: true-ish)] groups; a transition's own batch: N wins // Default: 100
- *     batch_idle_timeout?: int|Param, // Seconds of worker idleness after which a partial batch is flushed // Default: 5
- *     batch_enabled?: bool|Param, // Off: #[Transition(batch: N)] transitions travel as plain TransitionMessages, one at a time, exactly as if unbatched. Env-able: '%env(bool:APP_BATCH)%' // Default: true
- *     allow_force_place?: scalar|Param|null, // Default: "%kernel.debug%"
- *     workflow_paths?: list<scalar|Param|null>,
- *     async_transport_dsn?: scalar|Param|null, // Default: "doctrine://default"
- *     queue_driver?: "doctrine"|"rabbitmq"|Param, // Default: "doctrine"
- *     max_priority?: int|Param, // Default: null
- *     prefetch_count?: int|Param, // Default: null
- *     queue_options?: array<string, array{ // Default: []
- *         max_priority?: int|Param,
- *         prefetch_count?: int|Param,
- *     }>,
- *     retry_strategy?: array{
- *         max_retries?: int|Param, // Default: 3
- *         delay?: int|Param, // Default: 1000
- *         multiplier?: float|Param, // Default: 2
- *         max_delay?: int|Param, // Default: 0
- *     },
- * }
  * @psalm-type SurvosJsonlConfig = array{
  *     compression_level?: int|Param, // Default: 1
  * }
@@ -2405,6 +2378,16 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     dump_typescript?: bool|Param, // Control whether TypeScript types are dumped alongside routes. Disable this if you do not use TypeScript (e.g. in production when using AssetMapper). // Default: true
  *     routes?: Param|string|list<scalar|Param|null>,
  * }
+ * @psalm-type SurvosWorkflowExtrasConfig = array{
+ *     routes_enabled?: bool|Param, // Set false to manage this bundle's routes manually in your app. Bundles exposing sensitive routes (e.g. running console commands) should default this off. // Default: true
+ *     route_prefix?: scalar|Param|null, // URL prefix applied to all routes from this bundle. // Default: "/workflow"
+ *     locale_prefix?: bool|Param, // Prepend {_locale} (constrained to kernel.enabled_locales) to this bundle's route prefix, e.g. /{_locale}/f instead of /f -- for bundles whose routes are meant to be shared/bookmarked, so the URL itself carries the locale instead of a query param. // Default: false
+ * }
+ * @psalm-type SurvosWorkflowMessengerConfig = array{
+ *     subject_store?: scalar|Param|null, // Service implementing SubjectStoreInterface; defaults to the Doctrine store when DoctrineBundle is installed. // Default: null
+ *     default_transport?: scalar|Param|null, // Default: null
+ *     lock_factory?: scalar|Param|null, // LockFactory serializing transitions per subject across workers. Use a store shared by every worker host. // Default: "lock.factory"
+ * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,
  *     parameters?: ParametersConfig,
@@ -2447,7 +2430,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     survos_bunny?: SurvosBunnyConfig,
  *     survos_translator?: SurvosTranslatorConfig,
  *     survos_lingua?: SurvosLinguaConfig,
- *     survos_state?: SurvosStateConfig,
  *     survos_jsonl?: SurvosJsonlConfig,
  *     survos_js_twig?: SurvosJsTwigConfig,
  *     ux_icons?: UxIconsConfig,
@@ -2463,6 +2445,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     survos_auth?: SurvosAuthConfig,
  *     survos_grid?: SurvosGridConfig,
  *     ux_router?: UxRouterConfig,
+ *     survos_workflow_extras?: SurvosWorkflowExtrasConfig,
+ *     survos_workflow_messenger?: SurvosWorkflowMessengerConfig,
  *     "when@dev"?: array{
  *         imports?: ImportsConfig,
  *         parameters?: ParametersConfig,
@@ -2509,7 +2493,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         doctrine_diagram?: DoctrineDiagramConfig,
  *         survos_translator?: SurvosTranslatorConfig,
  *         survos_lingua?: SurvosLinguaConfig,
- *         survos_state?: SurvosStateConfig,
  *         survos_jsonl?: SurvosJsonlConfig,
  *         survos_js_twig?: SurvosJsTwigConfig,
  *         ux_icons?: UxIconsConfig,
@@ -2525,6 +2508,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_auth?: SurvosAuthConfig,
  *         survos_grid?: SurvosGridConfig,
  *         ux_router?: UxRouterConfig,
+ *         survos_workflow_extras?: SurvosWorkflowExtrasConfig,
+ *         survos_workflow_messenger?: SurvosWorkflowMessengerConfig,
  *     },
  *     "when@prod"?: array{
  *         imports?: ImportsConfig,
@@ -2568,7 +2553,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_bunny?: SurvosBunnyConfig,
  *         survos_translator?: SurvosTranslatorConfig,
  *         survos_lingua?: SurvosLinguaConfig,
- *         survos_state?: SurvosStateConfig,
  *         survos_jsonl?: SurvosJsonlConfig,
  *         survos_js_twig?: SurvosJsTwigConfig,
  *         ux_icons?: UxIconsConfig,
@@ -2584,6 +2568,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_auth?: SurvosAuthConfig,
  *         survos_grid?: SurvosGridConfig,
  *         ux_router?: UxRouterConfig,
+ *         survos_workflow_extras?: SurvosWorkflowExtrasConfig,
+ *         survos_workflow_messenger?: SurvosWorkflowMessengerConfig,
  *     },
  *     "when@test"?: array{
  *         imports?: ImportsConfig,
@@ -2629,7 +2615,6 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         doctrine_diagram?: DoctrineDiagramConfig,
  *         survos_translator?: SurvosTranslatorConfig,
  *         survos_lingua?: SurvosLinguaConfig,
- *         survos_state?: SurvosStateConfig,
  *         survos_jsonl?: SurvosJsonlConfig,
  *         survos_js_twig?: SurvosJsTwigConfig,
  *         ux_icons?: UxIconsConfig,
@@ -2645,6 +2630,8 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         survos_auth?: SurvosAuthConfig,
  *         survos_grid?: SurvosGridConfig,
  *         ux_router?: UxRouterConfig,
+ *         survos_workflow_extras?: SurvosWorkflowExtrasConfig,
+ *         survos_workflow_messenger?: SurvosWorkflowMessengerConfig,
  *     },
  *     ...<string, ExtensionType|array{ // extra keys must follow the when@%env% pattern or match an extension alias
  *         imports?: ImportsConfig,

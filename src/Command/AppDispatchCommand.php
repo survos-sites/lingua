@@ -10,7 +10,8 @@ use App\Service\TranslationIntakeService;
 use App\Workflow\TargetWorkflowInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Survos\Lingua\Contracts\Dto\BatchRequest;
-use Survos\StateBundle\Message\TransitionMessage;
+use Survos\WorkflowMessengerBundle\Message\SubjectReference;
+use Survos\WorkflowMessengerBundle\Service\TransitionDispatcher;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
@@ -18,8 +19,6 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
-use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Messenger\Stamp\TransportNamesStamp;
 use Symfony\Component\Serializer\SerializerInterface;
 
 #[AsCommand('app:dispatch', 'dispatch messages from the database')]
@@ -30,7 +29,7 @@ final class AppDispatchCommand
         private SourceRepository                              $sourceRepository,
         private EntityManagerInterface                        $entityManager,
         private SerializerInterface                           $serializer,
-        private MessageBusInterface                           $messageBus,
+        private TransitionDispatcher                          $transitions,
         private TranslationIntakeService                      $intake,
         #[Autowire('%kernel.enabled_locales%')] private array $supportedLocales,
         private readonly TargetRepository                     $targetRepository,
@@ -87,20 +86,21 @@ final class AppDispatchCommand
             if ($limit) {
                 $qb->setMaxResults($limit);
             }
-            $stamps = [];
-            if ($transport) {
-                $stamps[] = new TransportNamesStamp([$transport]);
+            // The translate transition declares its own transport; 'sync' applies it in-process.
+            if ($transport && 'sync' !== $transport) {
+                $io->error("--transport only accepts 'sync'; the translate transition declares its own transport.");
+
+                return Command::FAILURE;
             }
+            $context = 'sync' === $transport ? ['cascade' => 'sync'] : [];
             $count = 0;
             /** @var Target $target */
             foreach ($qb->getQuery()->getResult() as $idx => $target) {
-                $this->messageBus->dispatch(new TransitionMessage(
-                    $target->key,
-                    Target::class,
-                    TargetWorkflowInterface::TRANSITION_TRANSLATE,
+                $this->transitions->dispatch(
                     TargetWorkflowInterface::WORKFLOW_NAME,
-                ),
-                    $stamps,
+                    new SubjectReference(Target::class, (string) $target->key),
+                    TargetWorkflowInterface::TRANSITION_TRANSLATE,
+                    $context,
                 );
                 $count++;
             }

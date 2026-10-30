@@ -18,10 +18,10 @@ namespace App\Message;
  * ## Why not Symfony's BatchHandlerInterface
  *
  * That is the obvious answer — buffer messages in the handler, flush at N or on idle — and it
- * does not work here. `WorkflowHelperService::handleTransition` is registered with a bare
- * `#[AsMessageHandler]`, so it handles `TransitionMessage` from EVERY transport. A second
+ * does not work here. The workflow bundle's `TransitionHandler` is registered with a bare
+ * `#[AsMessageHandler]`, so it handles `TransitionRequest` from EVERY transport. A second
  * handler scoped with `fromTransport: 'target.translate'` would not replace it; Messenger
- * would call BOTH, translating every Target twice. Scoping state-bundle's handler instead
+ * would call BOTH, translating every Target twice. Scoping the bundle's handler instead
  * would change behaviour for every workflow in every app.
  *
  * (harvest's `BatchResizeRequests` was an earlier run at BatchHandlerInterface and hit the

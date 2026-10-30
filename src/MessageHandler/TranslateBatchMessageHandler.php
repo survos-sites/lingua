@@ -294,7 +294,7 @@ final class TranslateBatchMessageHandler
             }
 
             // `q` is committed BEFORE the publish, so a fast result always finds it there.
-            $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_DISPATCH);
+            $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_DISPATCH, ['cascade' => 'none']);
             $this->em->flush();
 
             try {
@@ -309,7 +309,7 @@ final class TranslateBatchMessageHandler
                 ));
             } catch (\Throwable $e) {
                 // Not sent: back to `u`, and Messenger retries the batch.
-                $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_REJECT);
+                $this->targetWorkflow->apply($target, TargetWorkflowInterface::TRANSITION_REJECT, ['cascade' => 'none']);
                 $this->em->flush();
                 throw $e;
             }

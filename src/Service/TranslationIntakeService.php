@@ -15,8 +15,6 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Survos\Lingua\Contracts\Dto\BatchRequest;
 use Survos\Lingua\Core\Identity\HashUtil;
-use Survos\StateBundle\Message\TransitionMessage;
-use Survos\StateBundle\Service\AsyncQueueLocator;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\TransportNamesStamp;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
@@ -62,7 +60,6 @@ final class TranslationIntakeService
         private readonly MessageBusInterface    $bus,
         private readonly NormalizerInterface    $normalizer,
         private readonly LoggerInterface        $logger,
-        private readonly AsyncQueueLocator      $asyncQueueLocator,
         private readonly TranslationEngineSelector $engineSelector,
         private readonly TranslationEngineCatalog $engineCatalog,
     ) {}
@@ -319,17 +316,6 @@ final class TranslationIntakeService
         $stamps = [];
         if ($payload->transport) {
             $stamps[] = new TransportNamesStamp($payload->transport);
-        }
-
-        // TRANSITION_TRANSLATE is declared `async: true` (TargetWorkflowInterface), so
-        // AsyncQueueLocator::stamps() ALWAYS attaches its own async-routed transport stamp for
-        // that transition — which silently overrode the $stamps built above from
-        // $payload->transport, so a caller requesting transport=sync never actually got
-        // synchronous processing. That only applies to TransitionMessage; TranslateBatchMessage
-        // is routed by messenger.yaml and honours $stamps directly. The flag is still set for
-        // any TransitionMessage dispatched elsewhere in this request.
-        if ($payload->transport === 'sync') {
-            $this->asyncQueueLocator->sync = true;
         }
 
         // ONE message per (locale, chunk), NOT one per Target. A push of 5,000 strings into

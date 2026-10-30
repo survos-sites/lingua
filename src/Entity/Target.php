@@ -21,8 +21,7 @@ use Survos\FieldBundle\Attribute\RouteIdentity;
 use Survos\FieldBundle\Attribute\EntityMeta;
 use Survos\FieldBundle\Attribute\Field;
 use Survos\FieldBundle\Enum\Widget;
-use Survos\StateBundle\Traits\MarkingInterface;
-use Survos\StateBundle\Traits\MarkingTrait;
+use App\Entity\Traits\MarkingTrait;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 #[ORM\Entity(repositoryClass: TargetRepository::class)]
@@ -49,7 +48,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     label: 'Targets',
     description: 'Translated target strings by locale, engine, and workflow state.'
 )]
-class Target implements RouteParametersInterface, MarkingInterface
+class Target implements RouteParametersInterface
 {
     use MarkingTrait;
     use RouteIdentityTrait;

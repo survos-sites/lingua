@@ -9,7 +9,6 @@ use Psr\Log\LoggerInterface;
 use Survos\DebugUtils\Assert;
 use Survos\TranslatorBundle\Model\TranslationRequest;
 use Survos\TranslatorBundle\Service\TranslatorManager;
-use Survos\StateBundle\Attribute\Workflow;
 use Symfony\Component\Workflow\Attribute\AsGuardListener;
 use Symfony\Component\Workflow\Attribute\AsTransitionListener;
 use Symfony\Component\Workflow\Event\Event;
