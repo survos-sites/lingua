@@ -200,6 +200,16 @@ final class TranslateBatchMethodTest extends WebTestCase
         ]);
 
         self::assertSame(2, $this->queuedJobRowCount());
+        $transport = self::getContainer()->get('messenger.transport.target.translate');
+        for ($i = 0; $i < 2; ++$i) {
+            foreach ($transport->get() as $envelope) {
+                $message = $envelope->getMessage();
+                self::assertInstanceOf(\App\Message\TranslateBatchMessage::class, $message);
+                self::assertSame('es', $message->sourceLocale);
+                self::assertNull($message->pivotLocale, 'A spoke-only request must not wait for an unrequested English hub.');
+                $transport->ack($envelope);
+            }
+        }
     }
 
     public function testTheSameTextTwiceIsDedupedToOneSource(): void

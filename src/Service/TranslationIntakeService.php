@@ -354,7 +354,7 @@ final class TranslationIntakeService
         //
         // The two sets are disjoint by construction (a Source is in $hubPendingSourceIds or it
         // is not), so nothing is dispatched twice and nothing is dropped.
-        if ($from !== $hub && $spokeLocales !== []) {
+        if ($from !== $hub && $spokeLocales !== [] && in_array($hub, $toLocales, true)) {
             $hubKeys = $toDispatch[$hub] ?? [];
 
             foreach ($this->chunkByChars($hubKeys, $charsByTargetKey) as $chunk) {
