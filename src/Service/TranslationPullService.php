@@ -51,7 +51,7 @@ final readonly class TranslationPullService
             ->andWhere('s.hash IN (:hashes)')
             ->andWhere('t.marking IN (:markings)')
             ->setParameter('hashes', $hashes)
-            ->setParameter('markings', [TargetWorkflowInterface::PLACE_TRANSLATED]);
+            ->setParameter('markings', TargetWorkflowInterface::TRANSLATED_PLACES);
 
         if ($locale) {
             $qb->andWhere('t.targetLocale = :locale')

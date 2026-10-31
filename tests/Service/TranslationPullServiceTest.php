@@ -45,6 +45,7 @@ final class TranslationPullServiceTest extends KernelTestCase
             ['hello world',  'en', 'fr', 'deepl', 'bonjour tout', WF::PLACE_TRANSLATED],
             // Queued but not yet translated -- present in the DB, absent from a pull.
             ['not done yet', 'en', 'es', 'libre', null,           WF::PLACE_UNTRANSLATED],
+            ['1910', 'de', 'en', 'libre', '1910', WF::PLACE_IDENTICAL],
         ];
 
         $hashes = [];
@@ -71,6 +72,17 @@ final class TranslationPullServiceTest extends KernelTestCase
         $map = $this->pull->pullByHashes([$h['good morning']]);
 
         self::assertSame([$h['good morning'] => 'god morgen'], $map);
+    }
+
+    public function testIdenticalResultsAreCompletedTranslations(): void
+    {
+        $h = $this->seed();
+        $map = $this->pull->pullByHashes([$h['1910']], locale: 'en', engine: 'libre');
+
+        self::assertSame([$h['1910'] => '1910'], $map);
+        self::assertSame([], $this->pull->missing([$h['1910']], $map));
+        self::assertSame([], $this->pull->pullByHashes([$h['1910']], locale: 'fr'));
+        self::assertSame([], $this->pull->pullByHashes([$h['1910']], engine: 'deepl'));
     }
 
     /**
