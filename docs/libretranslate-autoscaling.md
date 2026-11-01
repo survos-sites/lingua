@@ -75,10 +75,16 @@ Never `ps:stop`: it stops the whole app.
 
 ## Rollout plan (nothing below has been run; each step needs Tac's go-ahead)
 
-0. **Rehearse on a throwaway Dokku app** (not libretranslate): confirm that `ps:scale x web=0 --skip-deploy` +
-   `ps:restart` really leaves 0 containers, that `ps:scale web=1 --skip-deploy` + `ps:restart` brings one up and
-   rebuilds nginx, how long `ps:restart` blocks with a startup check, and that the 0 survives a host reboot.
-   These are the unverified assumptions; adjust `libre-scale-apply` if any is wrong (`ps:start`/`ps:stop` are not options).
+0. **Rehearsed 2026-11-01** on a throwaway app `scale-rehearsal` (traefik/whoami, since destroyed), Dokku 0.38.27:
+   - `ps:scale web=0 --skip-deploy` alone changes nothing; `ps:restart` applies it. After restart no container runs
+     (an old one is retired within the 60 s `wait-to-retire` window if still present), `ps:scale` then prints no `web` row, and
+     the vhost answers **502**. `web=1 --skip-deploy` + `ps:restart` brings it back (200). `ps:restart` returned in
+     ~25 s here (no startup check; libretranslate's 60 s+ check will make it longer — hence the detached wrapper).
+   - **Surprise:** in the first cycle `dokku/<app>:latest` disappeared and scale-up failed with "App image not found"
+     (fixed by `ps:rebuild`). It did not recur in two further cycles and the cause is unknown, so `libre-scale-apply`
+     falls back to `ps:rebuild`. For libretranslate that is a rebuild from a pinned public base image; confirm the
+     host still has `libretranslate/libretranslate:v1.9.5` layers and the model volume before enabling.
+   - Not rehearsed: persistence of 0 across a host reboot (Dokku restores per its scale file; check before relying on it).
 1. Host (root via `fsn1-root`): `adduser --system --shell /bin/sh libre-scale`; install `docs/ops/libre-scale` and
    `libre-scale-apply` to `/usr/local/bin` (0755, root); `/etc/sudoers.d/libre-scale`:
    `libre-scale ALL=(dokku) NOPASSWD: /usr/local/bin/libre-scale-apply 0, /usr/local/bin/libre-scale-apply 1`;

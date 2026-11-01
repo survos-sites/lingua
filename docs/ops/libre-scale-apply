@@ -10,11 +10,17 @@ exec 9>/var/lock/libre-scale.lock
 flock 9
 log() { echo "$(date -Is) $*" >> /var/log/libre-scale.log; }
 
-current="$(dokku ps:scale "$APP" | awk '$1=="web:"{print $2}')"
+# `ps:scale` prints no web row at 0 -- empty means 0.
+current="$(dokku ps:scale "$APP" | awk '$1=="web:"{print $2}')"; current="${current:-0}"
 if [ "$current" = "$n" ] && { [ "$n" = 0 ] || dokku ps:report "$APP" --ps-running 2>/dev/null | grep -q true; }; then
   log "scale $n: already so"; exit 0
 fi
 log "scale $current -> $n"
 dokku ps:scale "$APP" "web=$n" --skip-deploy
-dokku ps:restart "$APP"
+if ! dokku ps:restart "$APP"; then
+  # Rehearsal: once, the app image (dokku/<app>:latest) was missing after a 0 -> 1 cycle.
+  # Rebuild from the stored source/Dockerfile (base layers cached) rather than staying down.
+  log "restart failed, rebuilding"
+  dokku ps:rebuild "$APP"
+fi
 log "scale $n applied"
