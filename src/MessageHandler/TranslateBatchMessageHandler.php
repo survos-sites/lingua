@@ -8,6 +8,7 @@ use App\Entity\Target;
 use App\Message\TranslateBatchMessage;
 use App\Message\TranslationWorker\TranslationJobRequest;
 use App\Repository\TargetRepository;
+use App\Service\EngineScaling\EngineAutoscaler;
 use App\Service\TargetTranslationApplier;
 use App\Service\TranslationEngineCatalog;
 use App\Workflow\TargetWorkflowInterface;
@@ -45,6 +46,7 @@ final class TranslateBatchMessageHandler
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
         private readonly TranslationEngineCatalog $engineCatalog,
+        private readonly EngineAutoscaler $autoscaler,
         #[WorkflowTarget(TargetWorkflowInterface::WORKFLOW_NAME)] private readonly WorkflowInterface $targetWorkflow,
     ) {
     }
@@ -116,11 +118,23 @@ final class TranslateBatchMessageHandler
             return;
         }
 
+        // Scale-to-zero engine: wait for it (throws a recoverable exception that Messenger
+        // redelivers without spending a retry), and stamp activity again after the call so a
+        // long batch cannot look idle.
+        $scaled = $this->autoscaler->manages($message->engine);
+        if ($scaled) {
+            $this->autoscaler->ensureReady();
+        }
+
         $result = $translator->translateBatch(new TranslationBatchRequest(
             texts: $texts,
             source: $message->sourceLocale,
             target: $message->targetLocale,
         ));
+
+        if ($scaled) {
+            $this->autoscaler->touch();
+        }
 
         $translations = $result->translatedTexts;
 

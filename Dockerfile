@@ -28,6 +28,11 @@ WORKDIR /app
 #               platform requirements without it, independently of whether lingua
 #               uses Redis at runtime.
 #   sodium    - lingua's own require; Symfony's secrets vault uses it.
+# openssh-client: App\Service\EngineScaling\SshEngineScaler (restricted forced-command key; see
+# docs/libretranslate-autoscaling.md). Needed only when ENGINE_AUTOSCALE_ENABLED=1.
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN install-php-extensions \
         intl \
         opcache \

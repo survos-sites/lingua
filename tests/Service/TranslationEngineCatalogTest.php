@@ -76,4 +76,25 @@ final class TranslationEngineCatalogTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $catalog->validate('euronano-tiny-v1', 'de', ['en']);
     }
+
+    public function testStaleLanguagesServedWhenEngineIsDown(): void
+    {
+        $engine = $this->createStub(TranslatorEngineInterface::class);
+        $engine->method('capabilities')->willReturn(new EngineCapabilities());
+        $manager = new TranslatorManager(new TranslatorRegistry(new ServiceLocator(['libre' => static fn () => $engine]), ['libre' => 'engine'], 'libre'));
+        $calls = 0;
+        $http = new MockHttpClient(static function () use (&$calls): MockResponse {
+            return ++$calls === 1
+                ? new MockResponse(json_encode([['code' => 'de', 'targets' => ['en']]]))
+                : new MockResponse('', ['http_code' => 503]);
+        });
+        $cache = new ArrayAdapter();
+        $profiles = ['libre' => ['provider' => 'libretranslate', 'languagesUrl' => 'https://example.test/languages']];
+        $catalog = new TranslationEngineCatalog($manager, $http, $cache, $profiles);
+        self::assertSame(['de' => ['en']], $catalog->languages('libre'));
+
+        // fresh entry expires; the engine is now scaled to zero
+        $cache->deleteItem('translation_languages_'.hash('sha256', 'libre'.json_encode(['https://example.test/languages', null])));
+        self::assertSame(['de' => ['en']], $catalog->languages('libre'));
+    }
 }

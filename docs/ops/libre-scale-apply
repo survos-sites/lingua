@@ -1,0 +1,20 @@
+#!/bin/sh
+# Runs as the dokku user (sudoers: libre-scale ALL=(dokku) NOPASSWD: /usr/local/bin/libre-scale-apply [01]).
+# Serialised and idempotent. NEVER uses `ps:stop`: that stops the whole app, and the next
+# `ps:start` would not restore the scale we want.
+set -eu
+APP=libretranslate
+n="$1"
+case "$n" in 0|1) ;; *) exit 2 ;; esac
+exec 9>/var/lock/libre-scale.lock
+flock 9
+log() { echo "$(date -Is) $*" >> /var/log/libre-scale.log; }
+
+current="$(dokku ps:scale "$APP" | awk '$1=="web:"{print $2}')"
+if [ "$current" = "$n" ] && { [ "$n" = 0 ] || dokku ps:report "$APP" --ps-running 2>/dev/null | grep -q true; }; then
+  log "scale $n: already so"; exit 0
+fi
+log "scale $current -> $n"
+dokku ps:scale "$APP" "web=$n" --skip-deploy
+dokku ps:restart "$APP"
+log "scale $n applied"

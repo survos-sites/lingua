@@ -26,7 +26,8 @@ final class TargetWorkflow
         private readonly EntityManagerInterface             $entityManager,
         private readonly TranslatorManager $manager,
         private readonly TargetTranslationApplier          $applier,
-        private LoggerInterface                             $logger
+        private LoggerInterface                             $logger,
+        private readonly ?\App\Service\EngineScaling\EngineAutoscaler $autoscaler = null,
     )
     {
     }
@@ -66,11 +67,18 @@ final class TargetWorkflow
         // info, not warning: this fires once per string translated (routine, not an
         // anomaly) — needs -v to see, same as any other progress-narration log.
         $this->logger->info(sprintf('[%s->%s] %s', $from, $targetLocale, TargetTranslationApplier::snippet($sourceText)));
+        $scaled = $this->autoscaler?->manages($engine) ?? false;
+        if ($scaled) {
+            $this->autoscaler->ensureReady();
+        }
         $response = $translator->translate(new TranslationRequest(
             $sourceText,
             $source->locale,
             $targetLocale,
         ));
+        if ($scaled) {
+            $this->autoscaler->touch();
+        }
 
         // Writing the result — and deciding translated-vs-identical — belongs to
         // TargetTranslationApplier, which TranslateBatchMessageHandler also calls. One string

@@ -87,7 +87,25 @@ final readonly class TranslationEngineCatalog
         if (isset($config['languagePairs'])) { return $config['languagePairs']; }
         if (!isset($config['languagesUrl'])) { throw new \InvalidArgumentException('Language capabilities are not configured for engine "'.$engine.'".'); }
         $key = 'translation_languages_'.hash('sha256', $engine.json_encode([$config['languagesUrl'], $config['targetLanguagesUrl'] ?? null]));
-        return $this->cache->get($key, function (ItemInterface $item) use ($config): array {
+        // A scale-to-zero engine is down when idle, so a refresh can fail through no fault of the
+        // request. Keep the last good answer for a week and serve it when the refresh errors;
+        // a language list changes with a model install, not by the minute.
+        $staleKey = $key.'_stale';
+        try {
+            return $this->fetchLanguages($key, $staleKey, $config);
+        } catch (\Throwable $e) {
+            $stale = $this->cache->get($staleKey, static fn (): never => throw $e);
+            if (\is_array($stale) && $stale !== []) {
+                return $stale;
+            }
+            throw $e;
+        }
+    }
+
+    /** @param array<string,mixed> $config */
+    private function fetchLanguages(string $key, string $staleKey, array $config): array
+    {
+        return $this->cache->get($key, function (ItemInterface $item) use ($config, $staleKey): array {
             $item->expiresAfter(3600);
             $options = ['timeout' => 10, 'max_duration' => 15, 'headers' => $config['headers'] ?? []];
             $sources = $this->http->request('GET', $config['languagesUrl'], $options)->toArray();
@@ -104,6 +122,12 @@ final readonly class TranslationEngineCatalog
                 foreach ($sources as $row) { $pairs[strtolower($row['code'])] = array_map('strtolower', $row['targets']); }
             }
             if ($pairs === []) { throw new \RuntimeException('Engine returned no language capabilities.'); }
+            $this->cache->delete($staleKey);
+            $this->cache->get($staleKey, static function (ItemInterface $item) use ($pairs): array {
+                $item->expiresAfter(7 * 86400);
+
+                return $pairs;
+            });
             return $pairs;
         });
     }

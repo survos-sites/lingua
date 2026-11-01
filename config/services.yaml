@@ -62,6 +62,25 @@ services:
             $signer: '@webhook.signer'
             $logger: '@logger'
 
+    # --- Scale-to-zero LibreTranslate (docs/libretranslate-autoscaling.md) ---
+    App\Service\EngineScaling\EngineScalerInterface:
+        alias: App\Service\EngineScaling\NullEngineScaler
+
+    App\Service\EngineScaling\QueueDepth:
+        arguments: ['@messenger.transport.target.translate']
+
+    App\Service\EngineScaling\EngineAutoscaler:
+        arguments:
+            $state: '@engine_autoscale.cache'
+            $clock: '@clock'
+            $enabled: '%env(bool:ENGINE_AUTOSCALE_ENABLED)%'
+            $healthUrl: '%env(resolve:LIBRE_HOST)%/languages'
+            $scaledEngines: ['libre']
+            $idleMinutes: '%env(int:ENGINE_AUTOSCALE_IDLE_MINUTES)%'
+            $readyTimeoutSeconds: '%env(int:ENGINE_AUTOSCALE_READY_TIMEOUT)%'
+            $maxReplicas: '%env(int:ENGINE_AUTOSCALE_MAX_REPLICAS)%'
+
+
 when@prod:
     services:
         App\Service\TranslationNotifier:
@@ -71,6 +90,13 @@ when@prod:
                 # Enable after Harvest's result consumer is deployed. Unset keeps HTTP delivery.
                 $integrationCallbackUrl: '%env(default::LINGUA_RESULTS_CALLBACK_URL)%'
                 $integrationSender: '@messenger.transport.lingua_results'
+        App\Service\EngineScaling\EngineScalerInterface:
+            alias: App\Service\EngineScaling\SshEngineScaler
+        App\Service\EngineScaling\SshEngineScaler:
+            arguments:
+                $sshTarget: '%env(ENGINE_AUTOSCALE_SSH_TARGET)%'
+                $identityFile: '%env(ENGINE_AUTOSCALE_SSH_KEY)%'
+                $maxReplicas: '%env(int:ENGINE_AUTOSCALE_MAX_REPLICAS)%'
 
 when@dev:
     services:

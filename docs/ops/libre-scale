@@ -1,0 +1,15 @@
+#!/bin/sh
+# Forced command for the restricted `libre-scale` key on fsn1. NOT run by hand.
+#   authorized_keys: command="/usr/local/bin/libre-scale",restrict ssh-ed25519 AAAA... lingua-libre-scale
+# Accepts exactly `scale <0..MAX>` and hands it to libre-scale-apply as the dokku user.
+# Returns immediately: the apply runs detached because a start waits on the model-load check.
+set -eu
+MAX=1
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+case "$cmd" in
+  "scale "[0-9]|"scale "[0-9][0-9]) n="${cmd#scale }" ;;
+  *) echo "denied" >&2; exit 2 ;;
+esac
+[ "$n" -le "$MAX" ] || { echo "denied: max $MAX" >&2; exit 2; }
+setsid sudo -n -u dokku /usr/local/bin/libre-scale-apply "$n" >/dev/null 2>&1 </dev/null &
+echo "accepted scale $n"

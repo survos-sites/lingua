@@ -62,6 +62,7 @@ final class TranslationIntakeService
         private readonly LoggerInterface        $logger,
         private readonly TranslationEngineSelector $engineSelector,
         private readonly TranslationEngineCatalog $engineCatalog,
+        private readonly ?\App\Service\EngineScaling\EngineAutoscaler $autoscaler = null,
     ) {}
 
     /**
@@ -409,6 +410,16 @@ final class TranslationIntakeService
                     );
                     $queued += \count($chunk);
                 }
+            }
+        }
+
+        // Scale-to-zero engine: start loading the model now, while the queue drains to the
+        // worker, rather than making the first batch wait for a cold start. Never fatal.
+        if ($queued > 0 && $this->autoscaler?->manages($engine)) {
+            try {
+                $this->autoscaler->requestUp($queued);
+            } catch (\Throwable $e) {
+                $this->logger->warning('engine scale-up request failed: {m}', ['m' => $e->getMessage()]);
             }
         }
 

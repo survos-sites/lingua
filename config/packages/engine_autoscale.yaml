@@ -1,0 +1,10 @@
+# On-demand scaling of the LibreTranslate Dokku app (docs/libretranslate-autoscaling.md).
+# OFF unless ENGINE_AUTOSCALE_ENABLED=1, in which case the engine is assumed always running.
+# Service wiring lives in config/services.yaml (the App\\ resource would override it from here).
+parameters:
+    env(ENGINE_AUTOSCALE_ENABLED): '0'
+    env(ENGINE_AUTOSCALE_IDLE_MINUTES): '10'
+    env(ENGINE_AUTOSCALE_READY_TIMEOUT): '180'
+    env(ENGINE_AUTOSCALE_MAX_REPLICAS): '1'
+    env(ENGINE_AUTOSCALE_SSH_TARGET): ''
+    env(ENGINE_AUTOSCALE_SSH_KEY): ''

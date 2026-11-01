@@ -25,6 +25,11 @@ framework:
             #my.dedicated.cache: null
         pools:
             # control adapter's configuration
+            # Shared (DB-backed) state for App\Service\EngineScaling: the web and translator
+            # containers must see the same last-activity stamp, and cache.app is per-container.
+            engine_autoscale.cache:
+                adapter: cache.adapter.doctrine_dbal
+                provider: doctrine.dbal.default_connection
             translation.cache:
                 adapter: cache.adapter.pdo
                 provider: '%env(TRANSLATION_CACHE_DSN)%'
