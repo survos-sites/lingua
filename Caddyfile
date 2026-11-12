@@ -1,5 +1,31 @@
 {
-	frankenphp
+	# Worker mode: each worker boots the Symfony kernel once and then serves requests from it,
+	# instead of booting it for every request. symfony/runtime >= 7.4 switches to its
+	# FrankenPhpWorkerRunner by itself when FrankenPHP sets FRANKENPHP_WORKER, so this block is
+	# the whole change (no runtime package). Services live for the life of the worker, which is
+	# also what lets the in-process translation engine (App\Translation\BergamotBridge) load its
+	# model once per worker rather than once per request.
+	#
+	# Runbook and the state-leak audit this needs: mono bu/deployment-bundle/docs/
+	# frankenphp-migration.md ("Worker mode") and zm/docs/frankenphp-worker.md. Audited here
+	# 2026-11-12: no function statics, no static properties; the three services that keep state
+	# between calls (AmqpTranslationJobPublisher's connection, EngineAutoscaleListener's
+	# throttle, TranslationCompletionNotifier's flag) are process-level on purpose or clear
+	# themselves, and already live that way inside the messenger workers.
+	#
+	# num defaults low: this host is short of memory and every worker holds a booted kernel.
+	# FRANKENPHP_LOOP_MAX restarts a worker after that many requests, which bounds any slow leak.
+	# To go back to one kernel boot per request, replace this block with a bare `frankenphp`.
+	frankenphp {
+		worker {
+			file /app/public/index.php
+			name lingua
+			num {$FRANKENPHP_NUM_WORKERS:2}
+			env FRANKENPHP_LOOP_MAX {$FRANKENPHP_LOOP_MAX:500}
+			env FRANKENPHP_RESET_KERNEL {$FRANKENPHP_RESET_KERNEL:0}
+		}
+		max_wait_time 15s
+	}
 }
 
 :{$PORT:80} {

@@ -79,6 +79,31 @@ final class TranslatePageTest extends WebTestCase
         self::assertNull($data['detectedLanguage']);
     }
 
+    /**
+     * What a FrankenPHP worker does: one booted kernel answers request after request, and Symfony resets its services in
+     * between. The model must survive that: loaded for the first request, reused by the rest.
+     */
+    public function testOneKernelServingManyRequestsLoadsTheModelOnce(): void
+    {
+        $kernel = self::bootKernel();
+        $engine = self::getContainer()->get(NativeEuroNanoEngine::class);
+        if (!$engine->available()) {
+            self::markTestSkipped('native engine not available here');
+        }
+        $controller = self::getContainer()->get(TranslateController::class);
+
+        $loads = [];
+        foreach (['Guten Morgen.', 'Gute Nacht.', 'Das Museum ist geschlossen.'] as $sentence) {
+            $kernel->boot(); // re-entered with an empty request stack: this is where services_resetter runs
+            $response = $controller->translate($this->json(['q' => $sentence, 'source' => 'de', 'target' => 'en', 'engine' => NativeEuroNanoEngine::NAME]));
+            $meta = json_decode((string) $response->getContent(), true, flags: \JSON_THROW_ON_ERROR)['meta'];
+            $loads[] = [$meta['model_loads'], $meta['model_translations']];
+        }
+
+        self::assertSame([[1, 1], [1, 2], [1, 3]], $loads);
+        self::assertSame($engine, self::getContainer()->get(NativeEuroNanoEngine::class), 'the engine service is the same object after the resets');
+    }
+
     public function testBadRequestsAreAnsweredInWords(): void
     {
         $empty = $this->json(['q' => '  ', 'source' => 'de', 'target' => 'en']);

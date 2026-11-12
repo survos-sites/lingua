@@ -104,6 +104,9 @@ final class NativeEuroNanoEngine implements TranslatorEngineInterface
             'elapsed_ms' => round((hrtime(true) - $began) / 1e6, 1),
             'tokens' => $tokens,
             'sentences' => $sentences,
+            // 1 for as long as the process lives when the model is kept (FrankenPHP worker, messenger:consume).
+            'model_loads' => $this->bridge->usage()['loads'],
+            'model_translations' => $this->bridge->usage()['translations'],
         ]);
     }
 

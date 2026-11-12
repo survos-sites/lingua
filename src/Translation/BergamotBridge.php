@@ -33,6 +33,8 @@ final class BergamotBridge
 
     private ?\FFI $ffi = null;
     private ?\FFI\CData $handle = null;
+    private int $loads = 0;
+    private int $translations = 0;
 
     public function __construct(
         #[Autowire('%env(resolve:BERGAMOT_HOME)%')] private readonly string $home,
@@ -70,6 +72,21 @@ final class BergamotBridge
         return null;
     }
 
+    /**
+     * How many times this process has loaded the model, and how many sentences it has translated with it.
+     *
+     * The model is loaded on first use and then kept for as long as this service lives. This service is deliberately not
+     * resettable (no ResetInterface): in a FrankenPHP worker or a messenger:consume process the container outlives the
+     * request or message, so one load serves everything that follows. Under a classic one-boot-per-request server each
+     * request pays the load (about 30 ms) once.
+     *
+     * @return array{loads: int, translations: int}
+     */
+    public function usage(): array
+    {
+        return ['loads' => $this->loads, 'translations' => $this->translations];
+    }
+
     public function variant(): string
     {
         return $this->variant;
@@ -92,6 +109,7 @@ final class BergamotBridge
         if ($pointer === null) {
             throw new \RuntimeException('Native inference failed: ' . $ffi->bn_error());
         }
+        ++$this->translations;
         try {
             $text = \FFI::string($pointer);
         } finally {
@@ -121,6 +139,7 @@ final class BergamotBridge
             throw new \RuntimeException('Native model initialization failed: ' . $ffi->bn_error());
         }
         $this->handle = $handle;
+        ++$this->loads;
 
         return $this->ffi = $ffi;
     }
