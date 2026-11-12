@@ -51,6 +51,9 @@ security:
         - { path: ^/api, roles: PUBLIC_ACCESS }
         - { path: ^/babel, roles: PUBLIC_ACCESS }
         - { path: '^/batch-translate$', roles: PUBLIC_ACCESS }
+        # The DeepL-shaped API (DeeplController): machine-to-machine like the three above, and it checks
+        # LINGUA_API_KEY itself, from the `Authorization: DeepL-Auth-Key` header DeepL clients send.
+        - { path: ^/v2/, roles: PUBLIC_ACCESS }
 
         # Public landing page; the dashboard lives at /dashboard behind the catch-all.
         - { path: '^/$', roles: PUBLIC_ACCESS }
