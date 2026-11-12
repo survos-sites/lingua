@@ -1,0 +1,74 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Translate{% endblock %}
+
+{% block body %}
+    {# The LibreTranslate page, rebuilt here: source on the left, translation on the right. See TranslateController. #}
+    <div class="container-xl py-4"
+         data-controller="translate"
+         data-translate-url-value="{{ path('app_translate_api') }}"
+         data-translate-engines-value="{{ engines|json_encode|e('html_attr') }}"
+         data-translate-names-value="{{ names|json_encode|e('html_attr') }}">
+
+        <div class="d-flex align-items-center mb-3 gap-3 flex-wrap">
+            <h1 class="h2 m-0">Translate</h1>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <label class="form-label m-0" for="translate-engine">Engine</label>
+                <select id="translate-engine" class="form-select w-auto" data-translate-target="engine" data-action="translate#engineChanged">
+                    {% for name, engine in engines %}
+                        <option value="{{ name }}" {{ name == defaultEngine ? 'selected' }} {{ engine.available ? '' : 'disabled' }}>
+                            {{ engine.label }}{{ engine.available ? '' : ' — unavailable' }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        {% for name, engine in engines %}
+            {% if not engine.available %}
+                <div class="alert alert-warning py-2" role="alert">
+                    <strong>{{ engine.label }}</strong> is not available here: {{ engine.reason }}.
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <div class="card">
+            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+                <select class="form-select w-auto" aria-label="Translate from" data-translate-target="source" data-action="translate#translateSoon"></select>
+                <button type="button" class="btn btn-icon" title="Swap languages" aria-label="Swap languages"
+                        data-translate-target="swap" data-action="translate#swap">⇄</button>
+                <select class="form-select w-auto" aria-label="Translate into" data-translate-target="target" data-action="translate#translateSoon"></select>
+                <span class="ms-auto text-secondary small" data-translate-target="status" aria-live="polite"></span>
+            </div>
+            <div class="row g-0">
+                <div class="col-md-6 border-end">
+                    <div class="p-3">
+                        <textarea class="form-control border-0 shadow-none p-0" rows="10" maxlength="20000" autofocus
+                                  placeholder="Type or paste text" aria-label="Text to translate"
+                                  data-translate-target="input" data-action="input->translate#translateSoon"></textarea>
+                        <div class="d-flex align-items-center mt-2">
+                            <span class="text-secondary small" data-translate-target="count">0 / 20000</span>
+                            <button type="button" class="btn btn-sm btn-ghost-secondary ms-auto" data-action="translate#clear">Clear</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 bg-body-tertiary">
+                    <div class="p-3">
+                        <div class="translate-output" style="min-height: 15.5rem; white-space: pre-wrap;" lang="en"
+                             data-translate-target="output" aria-live="polite"></div>
+                        <div class="d-flex align-items-center mt-2">
+                            <span class="text-danger small" data-translate-target="error" role="alert"></span>
+                            <button type="button" class="btn btn-sm btn-ghost-secondary ms-auto" data-action="translate#copy" data-translate-target="copy">Copy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-secondary small mt-3">
+            The JSON behind this page follows LibreTranslate:
+            <code>POST {{ path('app_translate_api') }}</code> with <code>q</code>, <code>source</code>, <code>target</code> and <code>engine</code>;
+            <code>GET {{ path('app_translate_languages') }}?engine=…</code>.
+        </p>
+    </div>
+{% endblock %}

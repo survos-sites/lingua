@@ -1,0 +1,17 @@
+<?php
+
+/**
+ * FFI's methods are whatever the C declarations passed to FFI::cdef() say, so PHP itself cannot describe them.
+ * These are the functions of ai-tools' native translation bridge (cv/native/bergamot_bridge.cpp), as
+ * App\Translation\BergamotBridge declares them.
+ *
+ * @method string bn_error()
+ * @method \FFI\CData|null bn_load(string $library, string $model, string $vocab)
+ * @method \FFI\CData|null bn_translate(\FFI\CData $handle, string $input, \FFI\CData $seconds, \FFI\CData $tokens)
+ * @method int bn_workers(\FFI\CData $handle)
+ * @method void bn_string_free(\FFI\CData $text)
+ * @method void bn_free(\FFI\CData $handle)
+ */
+final class FFI
+{
+}

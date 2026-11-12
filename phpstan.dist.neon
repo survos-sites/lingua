@@ -6,3 +6,6 @@ parameters:
         - public/
         - src/
         - tests/
+    # FFI's methods come from C declarations at run time; this names the ones this app calls.
+    stubFiles:
+        - phpstan/FFI.stub
